@@ -47,7 +47,6 @@
   <div class="flare absolute left-0 top-0 rounded-full" data-t="1.1" style="width:55px;height:55px;opacity:0;mix-blend-mode:screen;background:radial-gradient(circle, rgba(255,170,120,.45), rgba(255,140,100,0) 70%)"></div>
   <div id="flash" class="absolute inset-0 bg-white" style="opacity:0"></div>
 
-  <h1 class="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded bg-slate-600/70 text-white text-xs sm:text-sm whitespace-nowrap">Low-Poly Physics Crafting Sandbox</h1>
 
   <!-- kanan atas: FPS + menu kualitas -->
   <div class="absolute top-2 right-2 flex items-start gap-2 pointer-events-auto">
@@ -55,45 +54,97 @@
     <button id="btnMenu" class="w-11 h-11 rounded-lg bg-black/50 text-white text-2xl leading-none" aria-label="Pengaturan">☰</button>
   </div>
 
-  <!-- Popup pengaturan -->
-  <div id="settingsPopup" class="hidden absolute top-14 right-2 w-64 p-3 rounded-xl bg-slate-800/95 border border-white/25 text-white text-sm pointer-events-auto shadow-2xl z-[100]">
-    <div class="flex items-center justify-between mb-2">
-      <b>⚙️ Pengaturan</b>
-      <button id="btnCloseSettings" class="w-7 h-7 rounded bg-white/10 leading-none" aria-label="Tutup">✕</button>
+  <!-- Modal Pengaturan Fullscreen Transparan & Scrollable -->
+  <div id="settingsPopup" class="hidden fixed inset-0 z-[1000] flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-md pointer-events-auto">
+    <div class="relative w-full max-w-md max-h-[88vh] flex flex-col rounded-2xl bg-slate-900/80 border border-white/20 shadow-2xl text-white overflow-hidden backdrop-blur-xl">
+      <!-- Header Modal -->
+      <div class="flex items-center justify-between px-5 py-3.5 border-b border-white/10 bg-white/5">
+        <div class="flex items-center gap-2 font-bold text-base tracking-wide">
+          <span>⚙️</span><span>Pengaturan Game</span>
+        </div>
+        <button id="btnCloseSettings" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 flex items-center justify-center text-white/80 font-bold transition-all" aria-label="Tutup">✕</button>
+      </div>
+
+      <!-- Body Modal (Scrollable) -->
+      <div class="p-5 space-y-4 overflow-y-auto overscroll-contain text-sm" style="-webkit-overflow-scrolling:touch;">
+        <!-- Kualitas Grafis -->
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-white/60 mb-1.5">Kualitas Grafis</div>
+          <div id="qualityBtns" class="flex gap-2">
+            <button data-q="0" class="qbtn flex-1 py-2.5 rounded-xl bg-white/10 border-2 border-transparent font-medium active:scale-95 transition-all">Low</button>
+            <button data-q="1" class="qbtn flex-1 py-2.5 rounded-xl bg-white/10 border-2 border-transparent font-medium active:scale-95 transition-all">Medium</button>
+            <button data-q="2" class="qbtn flex-1 py-2.5 rounded-xl bg-white/10 border-2 border-transparent font-medium active:scale-95 transition-all">High</button>
+          </div>
+          <div class="text-[11px] text-white/50 mt-1">Bayangan dinamis real-time aktif di kualitas High.</div>
+        </div>
+
+        <!-- Limit FPS -->
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-white/60 mb-1.5">Limit FPS</div>
+          <div id="fpsLimitBtns" class="flex gap-2">
+            <button data-fps="30" class="fps-btn flex-1 py-2 rounded-xl bg-white/10 border-2 border-transparent font-medium active:scale-95 transition-all">30 FPS</button>
+            <button data-fps="60" class="fps-btn flex-1 py-2 rounded-xl bg-white/10 border-2 border-transparent font-medium active:scale-95 transition-all">60 FPS</button>
+            <button data-fps="120" class="fps-btn flex-1 py-2 rounded-xl bg-white/10 border-2 border-transparent font-medium active:scale-95 transition-all">120 FPS</button>
+          </div>
+        </div>
+
+        <!-- Waktu Hari -->
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-white/60 mb-1.5">Waktu Hari (Day / Night)</div>
+          <div class="grid grid-cols-5 gap-1.5">
+            <button data-tod="auto" class="tod-btn py-2 rounded-xl bg-white/10 border-2 border-transparent text-xs font-medium active:scale-95 transition-all">Auto</button>
+            <button data-tod="dawn" class="tod-btn py-2 rounded-xl bg-white/10 border-2 border-transparent text-xs font-medium active:scale-95 transition-all">🌅 Pagi</button>
+            <button data-tod="day" class="tod-btn py-2 rounded-xl bg-white/10 border-2 border-transparent text-xs font-medium active:scale-95 transition-all">☀️ Siang</button>
+            <button data-tod="dusk" class="tod-btn py-2 rounded-xl bg-white/10 border-2 border-transparent text-xs font-medium active:scale-95 transition-all">🌇 Sore</button>
+            <button data-tod="night" class="tod-btn py-2 rounded-xl bg-white/10 border-2 border-transparent text-xs font-medium active:scale-95 transition-all">🌙 Malam</button>
+          </div>
+        </div>
+
+        <!-- Cuaca -->
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-white/60 mb-1.5">Cuaca Lingkungan</div>
+          <div class="flex gap-2">
+            <button data-wx="auto" class="wx-btn flex-1 py-2 rounded-xl bg-white/10 border-2 border-transparent font-medium active:scale-95 transition-all">Auto</button>
+            <button data-wx="clear" class="wx-btn flex-1 py-2 rounded-xl bg-white/10 border-2 border-transparent font-medium active:scale-95 transition-all">☀️ Cerah</button>
+            <button data-wx="rain" class="wx-btn flex-1 py-2 rounded-xl bg-white/10 border-2 border-transparent font-medium active:scale-95 transition-all">🌧️ Hujan</button>
+          </div>
+        </div>
+
+        <!-- Tampilan & Suara -->
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-white/60 mb-1.5">Tampilan & Audio</div>
+          <div class="flex flex-col gap-2">
+            <button id="btnFullscreen" class="w-full py-2.5 rounded-xl bg-emerald-600/75 hover:bg-emerald-600/90 active:scale-[0.98] font-semibold transition-all">⛶ Fullscreen: Off</button>
+            <button id="btnSound" class="w-full py-2.5 rounded-xl bg-sky-600/75 hover:bg-sky-600/90 active:scale-[0.98] font-semibold transition-all">🔊 Suara: On</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer Modal -->
+      <div class="px-5 py-3 border-t border-white/10 bg-white/5 flex justify-end">
+        <button id="btnCloseSettingsBottom" class="w-full py-2.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-[0.98] font-semibold text-sm transition-all">Tutup Pengaturan</button>
+      </div>
     </div>
-    <div class="text-xs text-white/70 mb-1">Kualitas Grafis</div>
-    <div id="qualityBtns" class="flex gap-1.5 mb-2.5">
-      <button data-q="0" class="qbtn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">Low</button>
-      <button data-q="1" class="qbtn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">Medium</button>
-      <button data-q="2" class="qbtn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">High</button>
-    </div>
-    <div class="text-xs text-white/70 mb-1">Limit FPS</div>
-    <div id="fpsLimitBtns" class="flex gap-1.5 mb-3">
-      <button data-fps="30" class="fps-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">30</button>
-      <button data-fps="60" class="fps-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">60</button>
-      <button data-fps="120" class="fps-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">120</button>
-    </div>
-    <div class="text-xs text-white/70 mb-1">Cuaca</div>
-    <div class="flex gap-1.5 mb-3">
-      <button data-wx="auto" class="wx-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">Auto</button>
-      <button data-wx="clear" class="wx-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">☀️ Cerah</button>
-      <button data-wx="rain" class="wx-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">🌧️ Hujan</button>
-    </div>
-    <div class="text-xs text-white/70 mb-1">Tampilan & Suara</div>
-    <button id="btnFullscreen" class="w-full py-2 mb-1.5 rounded-lg bg-emerald-600/80 font-semibold">⛶ Fullscreen: Off</button>
-    <button id="btnSound" class="w-full py-2 rounded-lg bg-sky-600/80 font-semibold">🔊 Suara: On</button>
-    <div class="text-[10px] text-white/50 mt-2">Bayangan real-time hanya aktif di kualitas High.</div>
   </div>
 
-  <!-- kiri atas: inventory + info build -->
-  <div class="absolute top-2 left-2 flex flex-col gap-1.5 items-start">
-    <div class="chip text-sm">🪵 Wood: <b id="woodCount">0</b></div>
-    <div id="buildInfo" class="build-only chip flex-col gap-0.5 leading-tight">
+  <!-- kiri atas: Minimap + Inventory Ringkas -->
+  <div class="absolute top-2 left-2 flex flex-col items-start gap-1 pointer-events-auto">
+    <!-- Minimap Radar Container (Transparan & Glassmorphic) -->
+    <div id="minimapWrap" class="relative rounded-2xl overflow-hidden border border-white/20 shadow-xl bg-slate-950/35 backdrop-blur-md" style="width:112px;height:112px;">
+      <canvas id="minimapCanvas" width="112" height="112" class="block w-full h-full"></canvas>
+      <div id="craftDistBadge" class="absolute bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-sm border border-amber-400/30 text-[9px] text-amber-300 font-bold whitespace-nowrap shadow pointer-events-none">🔨 14m</div>
+    </div>
+    <!-- Badge Wood Ringkas -->
+    <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/45 backdrop-blur-sm border border-white/15 text-white text-xs font-semibold shadow">
+      <span>🪵</span><span id="woodCount">0</span> <span class="text-white/60 text-[10px]">Wood</span>
+    </div>
+    <!-- Build Info & Tombol (Hanya saat mode build) -->
+    <div id="buildInfo" class="build-only chip flex-col gap-0.5 leading-tight text-xs mt-0.5">
       <div id="statLine1"></div><div id="statLine2"></div>
     </div>
-    <div class="build-only flex gap-1.5 pointer-events-auto">
-      <button id="btnPreset" class="chip border border-white/30">✈️ Preset</button>
-      <button id="btnClear" class="chip border border-white/30">🗑 Bersihkan</button>
+    <div class="build-only flex gap-1.5 pointer-events-auto mt-0.5">
+      <button id="btnPreset" class="chip border border-white/30 text-xs py-1 px-2">✈️ Preset</button>
+      <button id="btnClear" class="chip border border-white/30 text-xs py-1 px-2">🗑 Bersihkan</button>
     </div>
   </div>
 
@@ -150,8 +201,8 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: params.get('aa') =
 renderer.shadowMap.enabled = false;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
-scene.fog = new THREE.Fog(SKY, 70, 240);               // sembunyikan batas render distance
-const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 280);
+scene.fog = new THREE.Fog(SKY, 250, 950);               // sembunyikan batas map luas dengan kabut atmosfer
+const camera = new THREE.PerspectiveCamera(60, 1, 0.5, 1100);
 const hemi = new THREE.HemisphereLight(0xe3f3ff, 0x6f9250, 0.95); scene.add(hemi);
 // Arah matahari (dipakai untuk cahaya, posisi sprite matahari, dan bayangan)
 const SUN_DIR = new THREE.Vector3(0.5, 0.42, -0.76).normalize();
@@ -205,7 +256,7 @@ function vnoise(x, y) {                          // value noise 2D
 function fbm(x, y, o) { let s = 0, a = .5, f = 1, n = 0; for (let i = 0; i < o; i++) { s += vnoise(x * f, y * f) * a; n += a; a *= .5; f *= 2; } return s / n; }
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
-const T_SIZE = 360, T_N = 120, T_D = T_SIZE / T_N, T_HALF = T_SIZE / 2, T_W = T_N + 1;
+const T_SIZE = 1800, T_N = 200, T_D = T_SIZE / T_N, T_HALF = T_SIZE / 2, T_W = T_N + 1;
 const SITE = { x: 0, y: 0.2, z: 14 };            // lokasi area rakit (pad)
 const PAD_HALF = 4.7;
 const hGrid = new Float32Array(T_W * T_W);
@@ -213,15 +264,15 @@ const hGrid = new Float32Array(T_W * T_W);
 function genHeight(ix, iz) {
   const x = ix * T_D - T_HALF, z = iz * T_D - T_HALF;
   const rr = Math.hypot(x, z - 6);
-  const flatF = sstep(26, 95, rr);                                   // dataran luas di tengah
-  let h = (fbm(x * .011, z * .011, 4) - .5) * 46 * flatF;            // bukit
-  const m = sstep(90, 175, rr);                                      // cincin gunung
-  const ridge = 1 - Math.abs(2 * fbm(x * .012 + 9, z * .012 + 4, 4) - 1);
-  h += m * (18 + ridge * ridge * 80);
-  h += (hash2(ix, iz) - .5) * (1 + m * 5) * flatF;                   // kasar/rugged
-  const cm = sstep(.5, .7, fbm(x * .018 - 5, z * .018 + 7, 2));      // tebing berundak
-  const s = h / 6, f = Math.floor(s), fr = s - f;
-  h += (((f + sstep(.4, .6, fr)) * 6) - h) * cm * .85 * flatF;
+  const flatF = sstep(45, 190, rr);                                  // dataran luas di sekitar spawn & pad
+  let h = (fbm(x * .0025, z * .0025, 4) - .5) * 65 * flatF;          // perbukitan & lembah luas
+  const m = sstep(480, 860, rr);                                     // cincin pegunungan tinggi di tepian map
+  const ridge = 1 - Math.abs(2 * fbm(x * .003 + 9, z * .003 + 4, 4) - 1);
+  h += m * (32 + ridge * ridge * 130);
+  h += (hash2(ix, iz) - .5) * (1 + m * 6) * flatF;                  // kontur rugged/berbatu
+  const cm = sstep(.48, .72, fbm(x * .0045 - 5, z * .0045 + 7, 2)); // tebing bertingkat
+  const s = h / 7, f = Math.floor(s), fr = s - f;
+  h += (((f + sstep(.4, .6, fr)) * 7) - h) * cm * .85 * flatF;
   return h;
 }
 for (let iz = 0; iz < T_W; iz++) for (let ix = 0; ix < T_W; ix++) hGrid[iz * T_W + ix] = genHeight(ix, iz);
@@ -251,10 +302,10 @@ function surfaceY(x, z) {
 }
 
 function terrainColor(cy, ny, r) {
-  if (cy > 62 && ny > .55) return [.92 + r * .06, .94 + r * .05, .97];        // salju di puncak
+  if (cy > 85 && ny > .55) return [.92 + r * .06, .94 + r * .05, .97];        // salju di puncak pegunungan
   if (ny < .70) { const g = .36 + r * .14; return [g, g * .97, g * .92]; }     // tebing batu abu-abu
   if (ny < .82) { const g = .36 + r * .1; return [g + .14, g + .03, g * .7]; } // tanah berbatu
-  const t = clamp(cy / 40, 0, 1);                                              // rumput
+  const t = clamp(cy / 60, 0, 1);                                              // rumput
   return [.25 + r * .08 + t * .10, .62 + r * .10 - t * .14, .17 + r * .05];
 }
 (function buildTerrain() {
@@ -286,21 +337,42 @@ pad.position.set(SITE.x, 0, SITE.z); scene.add(pad);
 const grid = new THREE.GridHelper(9, 9, 0x9be4ff, 0x4f86ad);
 grid.position.set(SITE.x, SITE.y + .02, SITE.z); grid.visible = false; scene.add(grid);
 
+// Suar penanda lokasi crafting (Crafting Beacon 3D di pad)
+const beaconGroup = new THREE.Group();
+beaconGroup.position.set(SITE.x, SITE.y, SITE.z);
+scene.add(beaconGroup);
+// Pilar cahaya vertikal menjulang tinggi ke langit (terlihat dari jarak jauh)
+const beamMat = new THREE.MeshBasicMaterial({
+  color: 0x00e5ff,
+  transparent: true,
+  opacity: 0.35,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+const beamMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 3.2, 450, 8, 1, true).translate(0, 225, 0), beamMat);
+beaconGroup.add(beamMesh);
+// Cincin pulsing di atas lantai pad
+const beaconRingMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.75, side: THREE.DoubleSide });
+const beaconRing = new THREE.Mesh(new THREE.RingGeometry(2.4, 3.4, 16).rotateX(-Math.PI / 2), beaconRingMat);
+beaconRing.position.y = 0.25;
+beaconGroup.add(beaconRing);
+
 // Awan sederhana (kotak putih, murah)
 const clouds = [];
 { const cm = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 30; i++) {
     const g = new THREE.Group();
-    for (let k = 0; k < 4; k++) { const b = new THREE.Mesh(new THREE.BoxGeometry(10 + rand() * 12, 3 + rand() * 2, 7 + rand() * 6), cm); b.position.set(k * 9 - 14 + rand() * 4, rand() * 2, rand() * 6); g.add(b); }
-    g.position.set((rand() * 2 - 1) * 200, 110 + rand() * 50, (rand() * 2 - 1) * 200); scene.add(g); clouds.push(g);
+    for (let k = 0; k < 4; k++) { const b = new THREE.Mesh(new THREE.BoxGeometry(14 + rand() * 16, 3.5 + rand() * 2.5, 9 + rand() * 8), cm); b.position.set(k * 11 - 18 + rand() * 5, rand() * 2, rand() * 8); g.add(b); }
+    g.position.set((rand() * 2 - 1) * 880, 130 + rand() * 80, (rand() * 2 - 1) * 880); scene.add(g); clouds.push(g);
   } }
 
 /* ------------------------------------------------------------------ *
  * 3. POHON & BATU  (InstancedMesh => draw call minimal)
  * ------------------------------------------------------------------ */
 // Spatial hash untuk collision pemain (pohon/batu)
-const OB_CELL = 8, obGrid = new Map();
-const obKey = (cx, cz) => (cx + 64) * 256 + (cz + 64);
+const OB_CELL = 16, obGrid = new Map();
+const obKey = (cx, cz) => `${cx},${cz}`;
 function obAdd(o) { const k = obKey(Math.floor(o.x / OB_CELL), Math.floor(o.z / OB_CELL)); let a = obGrid.get(k); if (!a) obGrid.set(k, a = []); a.push(o); }
 function obResolve(p, rad) {
   const cx = Math.floor(p.x / OB_CELL), cz = Math.floor(p.z / OB_CELL);
@@ -316,21 +388,21 @@ function obResolve(p, rad) {
 
 const treeData = [];
 (function placeTrees() {
-  const N = 420, v = new THREE.Vector3();
+  const N = 1200, v = new THREE.Vector3();
   const add = (x, z) => { const y = terrainY(x, z);
     treeData.push({ x, y, z, s: .8 + rand() * .9, hp: 3, type: rand() < .3 ? 1 : 0, state: 0, t: 0, dx: 0, dz: 0, shake: 0, rotY: rand() * TAU, alive: true, r: 0 });
     const t = treeData[treeData.length - 1]; t.r = .35 * t.s; obAdd(t); };
   // beberapa pohon "starter" dekat area spawn
-  for (let i = 0; i < 9; i++) { const a = rand() * TAU, d = 16 + rand() * 14; add(SITE.x + Math.cos(a) * d, SITE.z + Math.sin(a) * d - 8); }
+  for (let i = 0; i < 12; i++) { const a = rand() * TAU, d = 16 + rand() * 14; add(SITE.x + Math.cos(a) * d, SITE.z + Math.sin(a) * d - 8); }
   let tries = 0;
-  while (treeData.length < N && tries++ < 9000) {
-    const x = (rand() * 2 - 1) * (T_HALF - 8), z = (rand() * 2 - 1) * (T_HALF - 8);
+  while (treeData.length < N && tries++ < 25000) {
+    const x = (rand() * 2 - 1) * (T_HALF - 15), z = (rand() * 2 - 1) * (T_HALF - 15);
     if (Math.hypot(x - SITE.x, z - SITE.z) < 14) continue;
     if (Math.abs(x - SITE.x) < 7 && z < SITE.z + 6 && z > -75) continue;         // jalur landasan bebas pohon
-    const y = terrainY(x, z); if (y > 55) continue;
+    const y = terrainY(x, z); if (y > 75) continue;
     groundNormal(x, z, v); if (v.y < .78) continue;
-    if (y > 30 && rand() < .5) continue;
-    if (vnoise(x * .03, z * .03) < .38 && rand() < .75) continue;               // bergerombol
+    if (y > 45 && rand() < .5) continue;
+    if (vnoise(x * .015, z * .015) < .38 && rand() < .75) continue;             // bergerombol
     add(x, z);
   }
 })();
@@ -378,14 +450,14 @@ const animTrees = new Set();
 
 // Batu
 (function placeRocks() {
-  const N = 170, geo = flat(new THREE.IcosahedronGeometry(1, 0));
+  const N = 380, geo = flat(new THREE.IcosahedronGeometry(1, 0));
   const inst = new THREE.InstancedMesh(geo, treeMat, N); inst.frustumCulled = false;
   const v = new THREE.Vector3(); let n = 0, tries = 0;
-  while (n < N && tries++ < 4000) {
-    const x = (rand() * 2 - 1) * (T_HALF - 8), z = (rand() * 2 - 1) * (T_HALF - 8);
+  while (n < N && tries++ < 9000) {
+    const x = (rand() * 2 - 1) * (T_HALF - 15), z = (rand() * 2 - 1) * (T_HALF - 15);
     if (Math.hypot(x - SITE.x, z - SITE.z) < 12 || (Math.abs(x - SITE.x) < 5 && z < SITE.z && z > -75)) continue;
-    const y = terrainY(x, z); if (y > 70) continue;
-    const s = .6 + rand() * 1.5;
+    const y = terrainY(x, z); if (y > 90) continue;
+    const s = .6 + rand() * 1.6;
     _q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 6, rand() * 3));
     _m.compose(_p.set(x, y - s * .25, z), _q, _sv.set(s * (.9 + rand() * .5), s * (.6 + rand() * .4), s * (.9 + rand() * .5)));
     inst.setMatrixAt(n, _m); const g = .38 + rand() * .2; inst.setColorAt(n, _c.setRGB(g, g * .97, g * .93));
@@ -659,7 +731,7 @@ function stepVehicle(dt, driving) {
     if (!gas) veh.vel.addScaledVector(_f, -veh.vel.dot(_f) * .25 * dt);
   }
   veh.impactCd -= dt;
-  const lim = T_HALF - 8;
+  const lim = T_HALF - 15;
   if (Math.abs(veh.pos.x) > lim) { veh.pos.x = clamp(veh.pos.x, -lim, lim); veh.vel.x *= -.3; }
   if (Math.abs(veh.pos.z) > lim) { veh.pos.z = clamp(veh.pos.z, -lim, lim); veh.vel.z *= -.3; }
   if (veh.pos.y < -50) { veh.pos.set(SITE.x, SITE.y + 6, SITE.z); veh.vel.set(0, 0, 0); }
@@ -734,8 +806,20 @@ function refreshFpsLimitUI() {
   });
 }
 function refreshFsUI() { $('btnFullscreen').textContent = '⛶ Fullscreen: ' + (document.fullscreenElement || document.webkitFullscreenElement ? 'On' : 'Off'); }
-$('btnMenu').addEventListener('pointerdown', e => { e.preventDefault(); popup.classList.toggle('hidden'); refreshQualityUI(); refreshFpsLimitUI(); refreshFsUI(); });
+$('btnMenu').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  popup.classList.toggle('hidden');
+  refreshQualityUI();
+  refreshFpsLimitUI();
+  refreshFsUI();
+  refreshWxUI();
+});
 $('btnCloseSettings').addEventListener('pointerdown', e => { e.preventDefault(); popup.classList.add('hidden'); });
+const btnCloseBottom = $('btnCloseSettingsBottom');
+if (btnCloseBottom) btnCloseBottom.addEventListener('pointerdown', e => { e.preventDefault(); popup.classList.add('hidden'); });
+popup.addEventListener('pointerdown', e => {
+  if (e.target === popup) popup.classList.add('hidden');
+});
 document.querySelectorAll('.qbtn').forEach(b => b.addEventListener('pointerdown', e => {
   e.preventDefault(); qIdx = +b.dataset.q; applyQuality(); refreshQualityUI(); toast(`Kualitas grafis: ${QUALITY[qIdx].name}`);
 }));
@@ -794,7 +878,10 @@ function setMode(m) {
 function toggleCraft() {
   if (mode === 'build') {                       // selesai merakit
     grid.visible = false; ghost.visible = false; pad.visible = true;
-    prepareVehicle(); player.x = SITE.x + 6.5; player.z = SITE.z + 1; player.y = surfaceY(player.x, player.z); player.vy = 0;
+    prepareVehicle();
+    // posisikan pemain di pinggir papan yang aman
+    player.x = SITE.x + 6.3; player.z = SITE.z + 1.2; player.y = surfaceY(player.x, player.z); player.vy = 0;
+    player.root.visible = true; playerBlob.visible = !shadowsOn;
     cam.play.yaw = 0; setMode('play');
     toast(parts.size ? 'Kendaraan siap! Dekati lalu tekan Interaksi 🚀' : 'Kendaraan masih kosong');
   } else {
@@ -804,6 +891,23 @@ function toggleCraft() {
       toast('Mendekatlah ke landasan rakit (pad) untuk Craft 🔨');
       return;
     }
+    // Jika pemain berada di atas papan (pad), langsung geser ke pinggir papan agar tidak menghalangi
+    const pdx = player.x - SITE.x, pdz = player.z - SITE.z;
+    const pDist = Math.hypot(pdx, pdz);
+    if (pDist < PAD_HALF + 1.5 || (Math.abs(pdx) <= PAD_HALF + 0.6 && Math.abs(pdz) <= PAD_HALF + 0.6)) {
+      const edgeR = PAD_HALF + 1.6; // ~6.3m dari pusat SITE (berdiri di pinggir papan)
+      let nx = pdx, nz = pdz;
+      if (pDist < 0.3) { nx = 1; nz = 0.2; } else { nx /= pDist; nz /= pDist; }
+      player.x = SITE.x + nx * edgeR;
+      player.z = SITE.z + nz * edgeR;
+      player.y = surfaceY(player.x, player.z);
+      player.vy = 0;
+      player.yaw = Math.atan2(-nx, -nz); // hadapkan pemain ke tengah papan
+    }
+    // sembunyikan karakter pemain di mode build agar pandangan 100% bebas dari tubuh pemain
+    player.root.visible = false;
+    playerBlob.visible = false;
+
     // kendaraan dikembalikan ke area rakit untuk diedit
     veh.sim = false; partRoot.position.set(0, 0, 0); vehGroup.position.set(SITE.x, SITE.y, SITE.z); vehGroup.quaternion.identity();
     grid.visible = true; setMode('build'); updateStats();
@@ -859,7 +963,7 @@ function updatePlayer(dt) {
     if (!chop.active) { let da = Math.atan2(mx, mz) - player.yaw; da = Math.atan2(Math.sin(da), Math.cos(da)); player.yaw += da * Math.min(1, 14 * dt); }
   }
   obResolve(player, .4);
-  const lim = T_HALF - 10; player.x = clamp(player.x, -lim, lim); player.z = clamp(player.z, -lim, lim);
+  const lim = T_HALF - 15; player.x = clamp(player.x, -lim, lim); player.z = clamp(player.z, -lim, lim);
   // vertikal
   if (input.jump || keys.Space) { if (player.grounded) { player.vy = 9.5; player.grounded = false; } }
   const gy = surfaceY(player.x, player.z);
@@ -907,11 +1011,13 @@ function updateCamera(dt) {
 }
 
 /* ------------------------------------------------------------------ *
- * 10. LINGKUNGAN DINAMIS
- *     - Matahari (sprite glow prosedural) + lens glare DOM (murah)
+ * 10. LINGKUNGAN DINAMIS & SIKLUS HARI (Pagi, Siang, Sore, Malam)
+ *     - Matahari & Bulan (sprite glow prosedural) + lens glare DOM
+ *     - Bintang di kubah langit malam (Stars) & lampu senter pemain
  *     - Bayangan real-time: HANYA kualitas HIGH
  *     - Siklus cuaca: cerah <-> hujan (tetesan = garis/LineSegments)
  *     - Petir (kilat + bolt bercabang) + suara WebAudio prosedural
+ *     - Minimap radar di pojok kiri atas dengan detektor jarak crafting
  * ------------------------------------------------------------------ */
 // --- Bayangan: tandai semua mesh Lambert (terrain, pohon, batu, pemain, pad) ---
 scene.traverse(o => { if (o.isMesh && o.material && o.material.isMeshLambertMaterial) o.castShadow = o.receiveShadow = true; });
@@ -924,7 +1030,7 @@ function applyShadows() {
 }
 onQualityChange = applyShadows; applyShadows();
 
-// --- Matahari: sprite glow dari canvas (tanpa asset eksternal) ---
+// --- Matahari & Bulan: sprite glow dari canvas (tanpa asset eksternal) ---
 function makeGlowTex() {
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
@@ -933,14 +1039,183 @@ function makeGlowTex() {
   g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c);
 }
 const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeGlowTex(), transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }));
-sunSprite.scale.setScalar(85); scene.add(sunSprite);
+sunSprite.scale.setScalar(175); scene.add(sunSprite);
+
+// Sprite Bulan (Moon)
+function makeMoonTex() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(64, 64, 14, 64, 64, 58);
+  gr.addColorStop(0, 'rgba(255,255,255,1)');
+  gr.addColorStop(0.35, 'rgba(235,245,255,0.92)');
+  gr.addColorStop(0.65, 'rgba(180,210,255,0.4)');
+  gr.addColorStop(1, 'rgba(150,190,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+const moonSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeMoonTex(), transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }));
+moonSprite.scale.setScalar(115); scene.add(moonSprite);
+
+// Bintang di langit malam (Stars)
+const starGeo = new THREE.BufferGeometry();
+const STAR_N = 650;
+const starPos = new Float32Array(STAR_N * 3);
+for (let i = 0; i < STAR_N; i++) {
+  const theta = rand() * TAU, phi = Math.acos(rand() * 0.96);
+  const r = 880;
+  starPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+  starPos[i * 3 + 1] = r * Math.cos(phi);
+  starPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, transparent: true, opacity: 0, fog: false, depthWrite: false });
+const stars = new THREE.Points(starGeo, starMat);
+stars.frustumCulled = false; scene.add(stars);
+
+// Lampu Senter / Headlight pemain di malam hari
+const headLight = new THREE.PointLight(0xfff2dc, 0, 32, 1.6);
+scene.add(headLight);
+
+// --- Minimap 2D Canvas ---
+const mmCanvas = $('minimapCanvas'), mmCtx = mmCanvas.getContext('2d');
+const MM_RAD = 52, MM_CX = 56, MM_CY = 56, MM_WORLD_RAD = 260; // radius radar 260 meter
+function drawMinimap() {
+  const ctx = mmCtx;
+  ctx.clearRect(0, 0, 112, 112);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(MM_CX, MM_CY, MM_RAD, 0, TAU);
+  ctx.clip();
+
+  // Background radar transparan (glassmorphism)
+  const bgGrad = ctx.createRadialGradient(MM_CX, MM_CY, 4, MM_CX, MM_CY, MM_RAD);
+  bgGrad.addColorStop(0, 'rgba(10, 24, 42, 0.35)');
+  bgGrad.addColorStop(0.7, 'rgba(8, 18, 32, 0.45)');
+  bgGrad.addColorStop(1, 'rgba(5, 12, 24, 0.60)');
+  ctx.fillStyle = bgGrad;
+  ctx.fill();
+
+  // Cincin grid jarak & border luar halus
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
+  ctx.lineWidth = 1;
+  for (const r of [18, 36, 51]) {
+    ctx.beginPath(); ctx.arc(MM_CX, MM_CY, r, 0, TAU); ctx.stroke();
+  }
+  // Garis silang halus
+  ctx.beginPath();
+  ctx.moveTo(MM_CX, MM_CY - MM_RAD); ctx.lineTo(MM_CX, MM_CY + MM_RAD);
+  ctx.moveTo(MM_CX - MM_RAD, MM_CY); ctx.lineTo(MM_CX + MM_RAD, MM_CY);
+  ctx.stroke();
+
+  // Arah utara (North)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.font = 'bold 8px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('N', MM_CX, 3);
+
+  const focus = mode === 'drive' ? veh.pos : player;
+  const scale = MM_RAD / MM_WORLD_RAD;
+
+  // Indikator Crafting Pad (SITE)
+  const cdx = SITE.x - focus.x, cdz = SITE.z - focus.z;
+  const craftDist = Math.hypot(cdx, cdz);
+  $('craftDistBadge').textContent = '🔨 ' + (craftDist < 1000 ? Math.round(craftDist) + 'm' : (craftDist / 1000).toFixed(1) + 'km');
+
+  if (craftDist * scale <= MM_RAD - 8) {
+    const px = MM_CX + cdx * scale, py = MM_CY + cdz * scale;
+    ctx.fillStyle = 'rgba(255, 180, 0, 0.35)';
+    ctx.beginPath(); ctx.arc(px, py, 9, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffaa00';
+    ctx.beginPath(); ctx.arc(px, py, 4.5, 0, TAU); ctx.fill();
+    ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🔨', px, py - 8);
+  } else {
+    // Clamped di pinggiran radar jika berada jauh
+    const ang = Math.atan2(cdz, cdx);
+    const edgeR = MM_RAD - 7;
+    const ex = MM_CX + Math.cos(ang) * edgeR, ey = MM_CY + Math.sin(ang) * edgeR;
+    const pulse = 0.6 + Math.sin(time * 6) * 0.4;
+    ctx.save();
+    ctx.translate(ex, ey);
+    ctx.rotate(ang);
+    ctx.fillStyle = `rgba(255, 190, 40, ${pulse})`;
+    ctx.beginPath();
+    ctx.moveTo(7, 0); ctx.lineTo(-6, -5); ctx.lineTo(-3, 0); ctx.lineTo(-6, 5); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Indikator Kendaraan (jika sedang tidak dikemudikan)
+  if (veh.sim && mode === 'play') {
+    const vdx = veh.pos.x - focus.x, vdz = veh.pos.z - focus.z;
+    const vDist = Math.hypot(vdx, vdz);
+    if (vDist * scale <= MM_RAD - 6) {
+      const vx = MM_CX + vdx * scale, vy = MM_CY + vdz * scale;
+      ctx.fillStyle = '#ff4444';
+      ctx.beginPath(); ctx.arc(vx, vy, 4, 0, TAU); ctx.fill();
+      ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('🚀', vx, vy - 7);
+    }
+  }
+
+  // Fokus Pemain di Tengah (Pulsing ring + Core dot)
+  ctx.fillStyle = 'rgba(0, 229, 255, 0.25)';
+  ctx.beginPath(); ctx.arc(MM_CX, MM_CY, 7, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#00e5ff';
+  ctx.beginPath(); ctx.arc(MM_CX, MM_CY, 3, 0, TAU); ctx.fill();
+
+  // Arah hadap (heading) yang 100% akurat dan sinkron dengan koordinat 3D:
+  // Di minimap: sumbu -Z adalah Atas (-Y canvas / Utara), sumbu +X adalah Kanan (+X canvas / Timur)
+  let fx, fz;
+  if (mode === 'drive') {
+    fx = _f.x;
+    fz = _f.z;
+  } else {
+    fx = Math.sin(player.yaw);
+    fz = Math.cos(player.yaw);
+  }
+  const heading = Math.atan2(fx, -fz);
+
+  ctx.save();
+  ctx.translate(MM_CX, MM_CY);
+  ctx.rotate(heading);
+
+  // Kerucut pandang lembut (view cone) agar arah pandang terlihat jelas
+  const coneGrad = ctx.createRadialGradient(0, 0, 2, 0, -14, 16);
+  coneGrad.addColorStop(0, 'rgba(0, 229, 255, 0.35)');
+  coneGrad.addColorStop(1, 'rgba(0, 229, 255, 0.0)');
+  ctx.fillStyle = coneGrad;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-8, -18);
+  ctx.lineTo(8, -18);
+  ctx.closePath();
+  ctx.fill();
+
+  // Panah penunjuk arah tajam, presisi, dan kontras
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.65)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, -11);      // Ujung panah tajam menunjuk ke depan
+  ctx.lineTo(-4.5, 3.5);   // Sayap kiri
+  ctx.lineTo(0, 0.5);      // Cekungan dalam
+  ctx.lineTo(4.5, 3.5);    // Sayap kanan
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.restore();
+
+  ctx.restore();
+}
 
 const glareEl = $('glare'), washEl = $('glareWash'), flashEl = $('flash'), ghostEls = [...document.querySelectorAll('.flare')];
 const _sp = new THREE.Vector3(); let sunVis = 0;
 // Cek apakah matahari tertutup gunung/bukit: sampling terrain sepanjang sinar ke arah matahari
 function sunOccluded() {
   const o = camera.position;
-  for (let d = 6; d < 230; d *= 1.3) {
+  for (let d = 10; d < 800; d *= 1.3) {
     const x = o.x + SUN_DIR.x * d, y = o.y + SUN_DIR.y * d, z = o.z + SUN_DIR.z * d;
     if (Math.abs(x) > T_HALF || Math.abs(z) > T_HALF) break;
     if (terrainY(x, z) > y) return true;
@@ -948,11 +1223,12 @@ function sunOccluded() {
   return false;
 }
 function updateSun(dt, clear) {
-  sunSprite.position.copy(camera.position).addScaledVector(SUN_DIR, 230);
-  sunSprite.material.opacity = clear;
+  const sunAbove = SUN_DIR.y > 0.05;
+  sunSprite.position.copy(camera.position).addScaledVector(SUN_DIR, 800);
+  sunSprite.material.opacity = sunAbove ? Math.min(1, clear * 1.35) : 0;
   _sp.copy(sunSprite.position).project(camera);
-  const onScreen = _sp.z < 1 && Math.abs(_sp.x) < 1.25 && Math.abs(_sp.y) < 1.25;
-  const target = onScreen && clear > .05 && !sunOccluded() ? clear : 0;
+  const onScreen = _sp.z < 1 && Math.abs(_sp.x) < 1.35 && Math.abs(_sp.y) < 1.35;
+  const target = onScreen && clear > .05 && sunAbove && !sunOccluded() ? clear * Math.min(1, SUN_DIR.y * 2.5) : 0;
   sunVis += (target - sunVis) * Math.min(1, dt * 8);
   if (sunVis < .01) { if (glareEl.style.opacity !== '0') { glareEl.style.opacity = washEl.style.opacity = 0; ghostEls.forEach(e => e.style.opacity = 0); } return; }
   const sx = (_sp.x * .5 + .5) * innerWidth, sy = (-_sp.y * .5 + .5) * innerHeight;
@@ -1045,10 +1321,45 @@ function thunder(delay, vol) {
   src.connect(lp); lp.connect(g); g.connect(ctx.destination); src.start(t0); src.stop(t0 + 3.5);
 }
 
+// --- Siklus Waktu Hari (Pagi, Siang, Sore, Malam) ---
+const tod = {
+  mode: 'auto',        // 'auto' | 'dawn' | 'day' | 'dusk' | 'night'
+  time: 0.35,          // 0.0 .. 1.0 (0.25=pagi, 0.50=siang, 0.75=sore, 0.0=malam)
+  targetTime: 0.35,
+  speed: 1 / 240       // 1 siklus hari penuh = 240 detik
+};
+const TOD_TARGETS = { dawn: 0.25, day: 0.50, dusk: 0.75, night: 0.00 };
+
+// Palet 4 Fase Waktu
+const P_DAWN  = { sky: 0xf59873, fog: 0xf6a788, sun: 0xffd2a0, hemiS: 0xffd0b0, hemiG: 0x556345, sunI: 0.75, hemiI: 0.82, night: 0.0 };
+const P_DAY   = { sky: 0xaee0ff, fog: 0xaee0ff, sun: 0xfff4dc, hemiS: 0xe3f3ff, hemiG: 0x6f9250, sunI: 0.88, hemiI: 0.95, night: 0.0 };
+const P_DUSK  = { sky: 0xdb441e, fog: 0xd24d28, sun: 0xff3804, hemiS: 0xff6b2b, hemiG: 0x3d251a, sunI: 0.86, hemiI: 0.74, night: 0.0 };
+const P_NIGHT = { sky: 0x060e1d, fog: 0x081326, sun: 0x6c92c4, hemiS: 0x16263f, hemiG: 0x0a141e, sunI: 0.28, hemiI: 0.45, night: 1.0 };
+
+function sampleSky(t) {
+  // t: 0..1
+  let k0, k1, f;
+  if (t < 0.25) { k0 = P_NIGHT; k1 = P_DAWN;  f = t / 0.25; }
+  else if (t < 0.50) { k0 = P_DAWN;  k1 = P_DAY;   f = (t - 0.25) / 0.25; }
+  else if (t < 0.75) { k0 = P_DAY;   k1 = P_DUSK;  f = (t - 0.50) / 0.25; }
+  else               { k0 = P_DUSK;  k1 = P_NIGHT; f = (t - 0.75) / 0.25; }
+  f = f * f * (3 - 2 * f); // smoothstep
+  return {
+    sky: new THREE.Color(k0.sky).lerp(_c.set(k1.sky), f),
+    fog: new THREE.Color(k0.fog).lerp(_c.set(k1.fog), f),
+    sun: new THREE.Color(k0.sun).lerp(_c.set(k1.sun), f),
+    hemiS: new THREE.Color(k0.hemiS).lerp(_c.set(k1.hemiS), f),
+    hemiG: new THREE.Color(k0.hemiG).lerp(_c.set(k1.hemiG), f),
+    sunI: k0.sunI + (k1.sunI - k0.sunI) * f,
+    hemiI: k0.hemiI + (k1.hemiI - k0.hemiI) * f,
+    night: k0.night + (k1.night - k0.night) * f
+  };
+}
+
 // --- State cuaca ---
 const wx = { mode: 'auto', k: 0, target: 0, timer: 50 + Math.random() * 40, flashT: 9, nextBolt: 3 };
-const C_SKY_CLEAR = new THREE.Color(SKY), C_SKY_RAIN = new THREE.Color(0x67747f), C_FLASH = new THREE.Color(0xe6edff), C_CLOUD_RAIN = new THREE.Color(0x58616b);
-const C_SUN_CLEAR = new THREE.Color(0xfff2d8), C_SUN_RAIN = new THREE.Color(0xb8c4d0);
+const C_SKY_RAIN = new THREE.Color(0x56626d), C_FLASH = new THREE.Color(0xe6edff), C_CLOUD_RAIN = new THREE.Color(0x4a545e);
+const C_SUN_RAIN = new THREE.Color(0xb0bcc9);
 const cloudMat = clouds[0].children[0].material;
 // pola kilat: terang - redup - terang - meluruh (seperti petir asli)
 const flashLevel = t => t < .06 ? 1 : t < .12 ? .25 : t < .2 ? .85 : Math.max(0, .85 * Math.exp(-(t - .2) * 7));
@@ -1060,10 +1371,98 @@ function strike(focus) {
 }
 function updateWeather(dt) {
   const focus = mode === 'drive' ? veh.pos : mode === 'build' ? SITE : player;
-  // matahari/bayangan mengikuti fokus kamera
-  sun.position.set(focus.x + SUN_DIR.x * 100, focus.y + SUN_DIR.y * 100, focus.z + SUN_DIR.z * 100);
+
+  // 1. Update Waktu Hari (Time of Day)
+  if (tod.mode === 'auto') {
+    tod.time = (tod.time + tod.speed * dt) % 1.0;
+  } else {
+    const tgt = TOD_TARGETS[tod.mode];
+    let diff = tgt - tod.time;
+    if (diff > 0.5) diff -= 1.0;
+    if (diff < -0.5) diff += 1.0;
+    tod.time = (tod.time + clamp(diff, -dt * 0.4, dt * 0.4) + 1.0) % 1.0;
+  }
+
+  // 1b. Lintasan Matahari di Langit (Pagi -> Siang -> Sore)
+  // Rentang siang aktif dari fajar (0.15) hingga senja (0.83)
+  const isDay = tod.time >= 0.15 && tod.time <= 0.83;
+  let sunX, sunY, sunZ;
+  if (isDay) {
+    const df = (tod.time - 0.15) / (0.83 - 0.15); // 0 (fajar) .. 0.5 (tengah hari) .. 1 (senja terbenam)
+    // Ketinggian matahari:
+    // Pagi (tod=0.25): elevasi ~0.26
+    // Siang (tod=0.50): elevasi ~0.48 (puncak benderang)
+    // Sore (tod=0.75): elevasi ~0.11 (sangat rendah, tepat di atas horizon bukit mau terbenam!)
+    if (df < 0.5) {
+      const u = df / 0.5;
+      sunY = 0.16 + 0.32 * Math.sin(u * Math.PI * 0.5);
+    } else {
+      const u = (df - 0.5) / 0.5; // 0 di siang, ~0.88 di sore (0.75)
+      sunY = 0.48 - 0.42 * u;     // saat u = 0.88 (sore), sunY = ~0.11 (sunset)
+    }
+    // Azimuth: melengkung dari timur (kiri-depan) ke barat (kanan-depan) selalu di depan kamera (-Z)
+    const az = (df - 0.5) * 1.65;
+    sunX = Math.sin(az) * 0.78;
+    sunZ = -Math.cos(az) * 0.78;
+  } else {
+    // Malam hari: matahari tenggelam di bawah cakrawala
+    sunY = -0.45; sunX = 0; sunZ = 1;
+  }
+  SUN_DIR.set(sunX, sunY, sunZ).normalize();
+
+  // Posisi directional light & bayangan
+  const isSunUp = SUN_DIR.y > 0.04;
+  const lightDir = isSunUp ? SUN_DIR : _t1.set(0.3, 0.45, -0.8).normalize();
+  sun.position.set(focus.x + lightDir.x * 100, focus.y + lightDir.y * 100, focus.z + lightDir.z * 100);
   sun.target.position.set(focus.x, focus.y, focus.z); sun.target.updateMatrixWorld();
 
+  // Posisi Bulan di langit malam (tampak jelas di langit malam pada arah hadap kamera)
+  const MOON_DIR = _t2.set(-0.35, 0.42, -0.80).normalize();
+  moonSprite.position.copy(camera.position).addScaledVector(MOON_DIR, 800);
+
+  // Sampling warna langit & pencahayaan sesuai waktu hari
+  const pal = sampleSky(tod.time);
+  const nightFactor = pal.night;
+
+  // Efek visual matahari sore (sunset illusion & corona jingga membara)
+  const duskFactor = Math.max(0, 1 - Math.abs(tod.time - 0.75) / 0.14);
+  // Matahari tampak lebih besar saat mau terbenam di horizon (sunset illusion)
+  sunSprite.scale.setScalar(175 + duskFactor * 65);
+
+  // Warna bola matahari: jauh lebih jingga kemerahan menyala saat sore
+  if (duskFactor > 0.02) {
+    sunSprite.material.color.copy(pal.sun).lerp(new THREE.Color(0xff2200), duskFactor * 0.88);
+  } else {
+    sunSprite.material.color.copy(pal.sun);
+  }
+
+  // Glare layar bernuansa jingga hangat keemasan saat sore
+  if (duskFactor > 0.15) {
+    glareEl.style.background = 'radial-gradient(circle, rgba(255,140,25,.95) 0, rgba(255,80,10,.6) 10%, rgba(255,50,5,.25) 26%, rgba(255,30,0,0) 65%)';
+    washEl.style.background = 'radial-gradient(ellipse at center, rgba(255,100,25,.5), rgba(255,60,15,.2))';
+  } else {
+    glareEl.style.background = 'radial-gradient(circle, rgba(255,253,240,.95) 0, rgba(255,242,200,.55) 5%, rgba(255,220,150,.2) 20%, rgba(255,200,120,0) 58%)';
+    washEl.style.background = 'radial-gradient(ellipse at center, rgba(255,244,214,.6), rgba(255,236,190,.3))';
+  }
+
+  // Bintang & Bulan
+  stars.position.copy(camera.position);
+  starMat.opacity = nightFactor * (1 - wx.k * 0.8);
+  moonSprite.material.opacity = nightFactor * (1 - wx.k) * 0.95;
+
+  // Lampu Senter / Headlight pemain saat malam / sore
+  headLight.position.set(focus.x, focus.y + 1.8, focus.z);
+  headLight.intensity = (nightFactor * 1.8 + (tod.mode === 'dusk' ? 0.7 : 0));
+
+  // Animasi suar pilar crafting beacon & SEMBUNYIKAN saat mode build/crafting agar tidak menghalangi pandangan
+  beaconGroup.visible = (mode !== 'build');
+  if (beaconGroup.visible) {
+    beaconRing.rotation.y += dt * 0.6;
+    beaconRing.scale.setScalar(1 + Math.sin(time * 3) * 0.14);
+    beamMat.opacity = (0.24 + Math.sin(time * 2) * 0.12) * (1 - nightFactor * 0.3);
+  }
+
+  // 2. Update Cuaca (Cerah / Hujan / Petir)
   if (wx.mode === 'auto') {
     wx.timer -= dt;
     if (wx.timer <= 0) {
@@ -1072,7 +1471,7 @@ function updateWeather(dt) {
       toast(wx.target ? '🌧️ Hujan mulai turun...' : '☀️ Cuaca cerah kembali');
     }
   } else wx.target = wx.mode === 'rain' ? 1 : 0;
-  wx.k += clamp(wx.target - wx.k, -dt / 7, dt / 7);                           // transisi halus ~7 detik
+  wx.k += clamp(wx.target - wx.k, -dt / 7, dt / 7);
   const k = wx.k;
 
   if (k > .6) { wx.nextBolt -= dt; if (wx.nextBolt <= 0) { strike(focus); wx.nextBolt = 4 + Math.random() * 9; } }
@@ -1080,23 +1479,30 @@ function updateWeather(dt) {
   const fl = wx.flashT < 1.5 ? flashLevel(wx.flashT) : 0;
   bolt.visible = wx.flashT < .32 && fl > .2;
 
-  scene.background.copy(C_SKY_CLEAR).lerp(C_SKY_RAIN, k).lerp(C_FLASH, fl * .7);
-  scene.fog.color.copy(scene.background);
-  scene.fog.near = 70 - 45 * k; scene.fog.far = 240 - 100 * k;
-  hemi.intensity = .95 - .4 * k + fl * 1.2;
-  sun.intensity = .75 - .62 * k;
-  sun.color.copy(C_SUN_CLEAR).lerp(C_SUN_RAIN, k);
-  cloudMat.color.setRGB(1, 1, 1).lerp(C_CLOUD_RAIN, k);
+  // Interpolasi Langit, Kabut, Matahari dengan Cuaca & Petir
+  scene.background.copy(pal.sky).lerp(C_SKY_RAIN, k).lerp(C_FLASH, fl * .7);
+  scene.fog.color.copy(pal.fog).lerp(C_SKY_RAIN, k).lerp(C_FLASH, fl * .7);
+  scene.fog.near = (250 - 160 * k); scene.fog.far = (950 - 450 * k);
+  hemi.color.copy(pal.hemiS); hemi.groundColor.copy(pal.hemiG);
+  hemi.intensity = pal.hemiI * (1 - 0.35 * k) + fl * 1.2;
+  sun.intensity = pal.sunI * (1 - 0.65 * k);
+  sun.color.copy(pal.sun).lerp(C_SUN_RAIN, k);
+  cloudMat.color.setRGB(1, 1, 1).lerp(new THREE.Color(0x353d48), nightFactor * 0.7).lerp(C_CLOUD_RAIN, k);
   flashEl.style.opacity = fl > .01 ? (fl * .35).toFixed(3) : 0;
 
   updateRain(dt, k, focus);
-  updateSun(dt, 1 - k);
+  updateSun(dt, (1 - k) * (1 - nightFactor));
   if (sfx.rainGain) { const g = sfx.on ? k * .16 : 0; if (Math.abs(g - sfx.last) > .003) { sfx.rainGain.gain.value = g; sfx.last = g; } }
+
+  // 3. Render Minimap Radar
+  drawMinimap();
 }
 
-// --- UI pengaturan cuaca & suara ---
+// --- UI pengaturan cuaca, waktu hari & suara ---
 function refreshWxUI() {
   document.querySelectorAll('.wx-btn').forEach(b => { const act = b.dataset.wx === wx.mode;
+    b.style.borderColor = act ? '#fff' : 'transparent'; b.style.background = act ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)'; });
+  document.querySelectorAll('.tod-btn').forEach(b => { const act = b.dataset.tod === tod.mode;
     b.style.borderColor = act ? '#fff' : 'transparent'; b.style.background = act ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)'; });
   $('btnSound').textContent = sfx.on ? '🔊 Suara: On' : '🔇 Suara: Off';
 }
@@ -1107,13 +1513,17 @@ document.querySelectorAll('.wx-btn').forEach(b => b.addEventListener('pointerdow
   if (wx.mode === 'rain') wx.nextBolt = 2;
   refreshWxUI(); toast(`Cuaca: ${b.textContent}`);
 }));
+document.querySelectorAll('.tod-btn').forEach(b => b.addEventListener('pointerdown', e => {
+  e.preventDefault(); tod.mode = b.dataset.tod;
+  refreshWxUI(); toast(`Waktu: ${b.textContent}`);
+}));
 $('btnSound').addEventListener('pointerdown', e => { e.preventDefault(); sfx.on = !sfx.on; refreshWxUI(); });
 
 /* ---------- Game loop ---------- */
 let last = performance.now(), fAcc = 0, fN = 0;
 function update(dt) {
   time += dt;
-  for (const c of clouds) { c.position.x += dt * 2; if (c.position.x > 220) c.position.x = -220; }
+  for (const c of clouds) { c.position.x += dt * 2.5; if (c.position.x > 900) c.position.x = -900; }
   if (mode === 'play') updatePlayer(dt);
   if (veh.sim) {                                  // 2 sub-step agar tidak tembus tanah saat cepat
     const h = dt / 2; stepVehicle(h, mode === 'drive'); stepVehicle(h, mode === 'drive'); applyVehicleTransform();
@@ -1150,8 +1560,10 @@ function update(dt) {
   } else {
     $('btnCraft').style.display = 'none';
   }
-  // tanda "dekat kendaraan"
-  $('btnAct').classList.toggle('near', mode === 'play' && veh.sim && Math.hypot(player.x - veh.pos.x, player.z - veh.pos.z) < 9);
+  // Tombol Interaksi (btnAct): HANYA tampil jika memang ada sesuatu yang bisa di-interaksikan!
+  const canInteract = (mode === 'drive') || (mode === 'play' && veh.sim && parts.size > 0 && Math.hypot(player.x - veh.pos.x, player.z - veh.pos.z) <= 9);
+  $('btnAct').style.display = canInteract ? 'flex' : 'none';
+  $('btnAct').classList.toggle('near', mode === 'play' && canInteract);
 }
 function loop(now) {
   requestAnimationFrame(loop);
