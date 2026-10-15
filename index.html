@@ -905,31 +905,77 @@ const rocketPickups = [];
 const rocketGroup = new THREE.Group();
 scene.add(rocketGroup);
 
+function createRocketMesh(vertical = false) {
+  const g = new THREE.Group();
+
+  // 1. Badan Silinder Utama (Aerospace White Fuselage)
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.72, 10).rotateX(Math.PI / 2), lam(0xf8fafc));
+  body.position.z = -0.04;
+  g.add(body);
+
+  // 2. Garis Strip Aksen Aerodinamis (Racing & Carbon Stripes)
+  const stripeRed = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.12, 10).rotateX(Math.PI / 2), lam(0xef4444));
+  stripeRed.position.z = -0.28;
+  const stripeDark = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.08, 10).rotateX(Math.PI / 2), lam(0x1e293b));
+  stripeDark.position.z = 0.18;
+  g.add(stripeRed, stripeDark);
+
+  // 3. Kerucut Hidung Sleek (Sharp Rocket Nosecone + Pitot Needle)
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.36, 10).rotateX(-Math.PI / 2), lam(0xef4444));
+  cone.position.z = -0.58;
+  const needle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.04, 0.16, 8).rotateX(Math.PI / 2), lam(0x94a3b8));
+  needle.position.z = -0.80;
+  g.add(cone, needle);
+
+  // 4. Nozel Pendorong Titanium Bell (Convergent-Divergent Rocket Nozzle)
+  const gimbal = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.16, 0.12, 10).rotateX(Math.PI / 2), lam(0x334155));
+  gimbal.position.z = 0.35;
+  const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.15, 0.22, 10).rotateX(Math.PI / 2), lam(0x1e293b));
+  bell.position.z = 0.48;
+  // Inti panas bercahaya di dalam mulut nozel (Glowing heat core)
+  const core = new THREE.Mesh(new THREE.CircleGeometry(0.13, 10), new THREE.MeshBasicMaterial({ color: 0xff6600, side: THREE.DoubleSide }));
+  core.position.z = 0.45;
+  g.add(gimbal, bell, core);
+
+  // 5. 4x Sirip Stabilisator Aerodinamis (4x Delta Tail Fins)
+  const finGeo = flat(new THREE.BoxGeometry(0.68, 0.04, 0.30));
+  const finH = new THREE.Mesh(finGeo, lam(0xe2e8f0));
+  finH.position.set(0, 0, 0.22);
+  const finV = new THREE.Mesh(finGeo, lam(0xe2e8f0));
+  finV.position.set(0, 0, 0.22);
+  finV.rotation.z = Math.PI / 2;
+  
+  // Aksen merah di ujung sayap sirip
+  const tipGeo = flat(new THREE.BoxGeometry(0.12, 0.046, 0.24));
+  [-0.30, 0.30].forEach(ox => {
+    const t = new THREE.Mesh(tipGeo, lam(0xef4444)); t.position.set(ox, 0, 0.24); finH.add(t);
+  });
+  [-0.30, 0.30].forEach(oy => {
+    const t = new THREE.Mesh(tipGeo, lam(0xef4444)); t.position.set(0, oy, 0.24); finV.add(t);
+  });
+  g.add(finH, finV);
+
+  // 6. Dudukan Pylon Bracket (Mounting bracket ke rangka pesawat)
+  const mountPylon = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.54), lam(0x475569));
+  mountPylon.position.set(0, -0.24, -0.05);
+  g.add(mountPylon);
+
+  if (vertical) {
+    g.rotation.x = Math.PI / 2;
+  }
+  return g;
+}
+
 function createRocketPickupMesh() {
   const g = new THREE.Group();
-  // Badan silinder putih
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.9, 8), lam(0xf3f4f6));
-  body.position.y = 0.45;
-  g.add(body);
-  // Kerucut hidung merah
-  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.45, 8), lam(0xef4444));
-  cone.position.y = 1.05;
-  g.add(cone);
-  // Nozel bawah abu gelap
-  const noz = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.12, 0.22, 8), lam(0x334155));
-  noz.position.y = 0.05;
-  g.add(noz);
-  // Sayap sirip kecil
-  const finGeo = new THREE.BoxGeometry(0.55, 0.28, 0.05);
-  const fin1 = new THREE.Mesh(finGeo, lam(0xef4444));
-  fin1.position.y = 0.22;
-  const fin2 = fin1.clone();
-  fin2.rotation.y = Math.PI / 2;
-  g.add(fin1); g.add(fin2);
+  const rocket = createRocketMesh(true);
+  rocket.position.y = 0.55;
+  g.add(rocket);
+
   // Halo cincin berpendar di dasar
-  const haloGeo = new THREE.RingGeometry(0.35, 0.52, 12);
+  const haloGeo = new THREE.RingGeometry(0.35, 0.55, 16);
   haloGeo.rotateX(-Math.PI / 2);
-  const halo = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.7 }));
+  const halo = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.75 }));
   halo.position.y = -0.05;
   g.add(halo);
   return g;
@@ -1227,7 +1273,7 @@ function makePartMesh(type) {
   } else if (type === 'wing') {
     g.add(new THREE.Mesh(G.wing, lam(0xd5dae0)));
   } else if (type === 'thruster') {
-    g.add(new THREE.Mesh(G.thr, lam(0xf2f2f2))); g.add(new THREE.Mesh(G.noz, lam(0xd62b2b))); g.add(new THREE.Mesh(G.nose, lam(0xd62b2b)));
+    g.add(createRocketMesh(false));
   } else if (type === 'gun') {
     // Dudukan meriam baja
     g.add(new THREE.Mesh(G.gunBase, lam(0x334155)));
