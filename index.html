@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Low-Poly Physics Crafting Sandbox</title>
+<meta name="description" content="Prototype game 3D open-world low-poly berbasis web: tebang pohon, rakit kendaraan roket, dan terbang. Ringan untuk HP low-end.">
+<meta name="theme-color" content="#aee0ff">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  html, body { margin:0; height:100%; overflow:hidden; background:#aee0ff; overscroll-behavior:none;
+    touch-action:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+    -webkit-tap-highlight-color:transparent; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  /* Visibilitas UI per mode (play / build / drive) */
+  body:not([data-mode=build]) .build-only { display:none !important; }
+  body[data-mode=build] .play-only { display:none !important; }
+  body:not([data-mode=drive]) .drive-only { display:none !important; }
+  body[data-mode=drive] .nodrive { display:none !important; }
+  .rbtn { position:absolute; border-radius:9999px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(20,40,30,.55); border:3px solid rgba(255,255,255,.75); color:#fff; font-weight:600;
+    pointer-events:auto; transition:transform .08s, background .15s; touch-action:none; }
+  .rbtn:active, .rbtn.down { transform:scale(.88); background:rgba(255,255,255,.35); }
+  .rbtn .ico { line-height:1; }
+  .rbtn .lbl { font-size:11px; margin-top:2px; text-shadow:0 1px 2px #000; }
+  .slot { width:62px; height:62px; border-radius:10px; background:rgba(0,0,0,.35); border:3px solid transparent; color:#fff;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:10px; line-height:1.1; text-align:center; }
+  .slot .ico { font-size:24px; }
+  .slot.active { border-color:#fff; background:rgba(255,255,255,.2); }
+  .chip { background:rgba(15,30,25,.6); border-radius:8px; padding:4px 10px; font-size:12px; color:#fff; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(255,255,120,.7);} 50%{ box-shadow:0 0 0 12px rgba(255,255,120,0);} }
+  .near { animation:pulse 1s infinite; }
+</style>
+</head>
+<body data-mode="play">
+
+<canvas id="gl" class="fixed inset-0 block" style="width:100%;height:100%"></canvas>
+
+<!-- ================= UI OVERLAY ================= -->
+<main id="ui" class="fixed inset-0 pointer-events-none">
+  <h1 class="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded bg-slate-600/70 text-white text-xs sm:text-sm whitespace-nowrap">Low-Poly Physics Crafting Sandbox</h1>
+
+  <!-- kanan atas: FPS + menu kualitas -->
+  <div class="absolute top-2 right-2 flex items-start gap-2 pointer-events-auto">
+    <div id="fps" class="chip">FPS: --</div>
+    <button id="btnMenu" class="w-11 h-11 rounded-lg bg-black/50 text-white text-2xl leading-none" aria-label="Pengaturan">☰</button>
+  </div>
+
+  <!-- Popup pengaturan -->
+  <div id="settingsPopup" class="hidden absolute top-14 right-2 w-64 p-3 rounded-xl bg-slate-800/95 border border-white/25 text-white text-sm pointer-events-auto shadow-2xl z-[100]">
+    <div class="flex items-center justify-between mb-2">
+      <b>⚙️ Pengaturan</b>
+      <button id="btnCloseSettings" class="w-7 h-7 rounded bg-white/10 leading-none" aria-label="Tutup">✕</button>
+    </div>
+    <div class="text-xs text-white/70 mb-1">Kualitas Grafis</div>
+    <div id="qualityBtns" class="flex gap-1.5 mb-2.5">
+      <button data-q="0" class="qbtn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">Low</button>
+      <button data-q="1" class="qbtn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">Medium</button>
+      <button data-q="2" class="qbtn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">High</button>
+    </div>
+    <div class="text-xs text-white/70 mb-1">Limit FPS</div>
+    <div id="fpsLimitBtns" class="flex gap-1.5 mb-3">
+      <button data-fps="30" class="fps-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">30</button>
+      <button data-fps="60" class="fps-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">60</button>
+      <button data-fps="120" class="fps-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">120</button>
+    </div>
+    <div class="text-xs text-white/70 mb-1">Tampilan</div>
+    <button id="btnFullscreen" class="w-full py-2 rounded-lg bg-emerald-600/80 font-semibold">⛶ Fullscreen: Off</button>
+  </div>
+
+  <!-- kiri atas: inventory + info build -->
+  <div class="absolute top-2 left-2 flex flex-col gap-1.5 items-start">
+    <div class="chip text-sm">🪵 Wood: <b id="woodCount">0</b></div>
+    <div id="buildInfo" class="build-only chip flex-col gap-0.5 leading-tight">
+      <div id="statLine1"></div><div id="statLine2"></div>
+    </div>
+    <div class="build-only flex gap-1.5 pointer-events-auto">
+      <button id="btnPreset" class="chip border border-white/30">✈️ Preset</button>
+      <button id="btnClear" class="chip border border-white/30">🗑 Bersihkan</button>
+    </div>
+  </div>
+
+  <!-- HUD penerbangan -->
+  <div id="flightHud" class="drive-only absolute top-12 left-1/2 -translate-x-1/2 chip text-sm tracking-wide">--</div>
+
+  <div id="toast" class="absolute top-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-black/65 text-white text-sm opacity-0 transition-opacity duration-300 whitespace-nowrap"></div>
+
+  <!-- Virtual joystick (kiri) -->
+  <div id="joyBase" class="nobuild play-only absolute pointer-events-auto rounded-full"
+       style="left:22px;bottom:22px;width:140px;height:140px;background:rgba(255,255,255,.18);border:3px solid rgba(255,255,255,.55);touch-action:none">
+    <div id="joyKnob" class="absolute rounded-full" style="left:50%;top:50%;width:62px;height:62px;transform:translate(-50%,-50%);background:rgba(255,255,255,.5);border:2px solid rgba(255,255,255,.8)"></div>
+  </div>
+
+  <!-- Tombol aksi (kanan) -->
+  <div class="absolute" style="right:12px;bottom:12px;width:250px;height:250px;pointer-events:none">
+    <button id="btnJump"  class="rbtn play-only nodrive" style="right:8px;bottom:104px;width:66px;height:66px"><span class="ico text-2xl">🦘</span><span class="lbl">Lompat</span></button>
+    <button id="btnChop"  class="rbtn play-only" style="right:100px;bottom:86px;width:70px;height:70px"><span id="chopIco" class="ico text-2xl">🪓</span><span id="chopLbl" class="lbl">Tebang</span></button>
+    <button id="btnAct"   class="rbtn play-only" style="right:104px;bottom:6px;width:70px;height:70px"><span id="actIco" class="ico text-2xl">🚀</span><span id="actLbl" class="lbl">Interaksi</span></button>
+    <button id="btnCraft" class="rbtn" style="right:0;bottom:0;width:92px;height:92px"><span class="ico text-4xl">🔨</span><span id="craftLbl" class="lbl text-sm">Craft</span></button>
+  </div>
+
+  <!-- Hotbar build mode -->
+  <div id="hotbar" class="build-only absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 p-1.5 rounded-xl bg-emerald-900/75 border border-emerald-300/40 pointer-events-auto">
+    <button class="slot active" data-tool="block"><span class="ico">🪵</span><span>Block<br><b id="slotWood">0</b> kayu</span></button>
+    <button class="slot" data-tool="thruster"><span class="ico">🚀</span><span>Roket<br>Unlimited</span></button>
+    <button class="slot" data-tool="wing"><span class="ico">🪽</span><span>Sayap<br>Gratis</span></button>
+    <button class="slot" data-tool="del"><span class="ico">🧹</span><span>Hapus</span></button>
+  </div>
+</main>
+
+<script>
+/* =====================================================================
+ *  LOW-POLY PHYSICS CRAFTING SANDBOX  —  single file, tanpa asset eksternal
+ *  Struktur:
+ *   1. Setup renderer/scene (optimasi mobile)      6. Particle (api / debu)
+ *   2. Terrain prosedural (grid height + sampling) 7. Mode Build (grid snap)
+ *   3. Pohon & batu (InstancedMesh)                8. Fisika kendaraan
+ *   4. Karakter blocky + animasi                   9. Kamera, input, game loop
+ *   5. Input / UI helper
+ * ===================================================================== */
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);   // ?aa=1 => aktifkan antialias
+
+/* ------------------------------------------------------------------ *
+ * 1. RENDERER & SCENE  (optimasi: tanpa antialias, tanpa shadow map,
+ *    Lambert material, pixel ratio terbatas, fog + far plane pendek)
+ * ------------------------------------------------------------------ */
+const SKY = 0xaee0ff;
+const canvas = $('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: params.get('aa') === '1', powerPreference: 'high-performance' });
+renderer.shadowMap.enabled = false;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, 70, 240);               // sembunyikan batas render distance
+const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 280);
+scene.add(new THREE.HemisphereLight(0xe3f3ff, 0x6f9250, 0.95));
+const sun = new THREE.DirectionalLight(0xfff2d8, 0.75); sun.position.set(60, 100, 40); scene.add(sun);
+
+// Level kualitas (render scale). Default MED = pixel ratio maks 1.
+const QUALITY = [
+  { name: 'LOW',  pr: 0.6 },
+  { name: 'MED',  pr: Math.min(devicePixelRatio || 1, 1) },
+  { name: 'HIGH', pr: Math.min(devicePixelRatio || 1, 2) }
+];
+let qIdx = 1;
+function applyQuality() {
+  renderer.setPixelRatio(QUALITY[qIdx].pr);
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+}
+addEventListener('resize', applyQuality);
+applyQuality();
+
+// Material cache & util
+const matCache = {};
+const lam = c => matCache[c] || (matCache[c] = new THREE.MeshLambertMaterial({ color: c }));
+// Ubah geometry jadi flat-shaded (non-indexed + normal per face) => tampilan low-poly tajam
+function flat(g) { const n = g.toNonIndexed(); n.computeVertexNormals(); g.dispose(); return n; }
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const TAU = Math.PI * 2;
+
+/* ------------------------------------------------------------------ *
+ * 2. TERRAIN PROSEDURAL
+ *    Tinggi disimpan di grid (hGrid). Mesh dibangun dari grid yang sama
+ *    dan groundY() meng-interpolasi segitiga yang sama => fisika pas
+ *    dengan visual, tanpa raycast.
+ * ------------------------------------------------------------------ */
+function rng32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rand = rng32(1337);
+function hash2(i, j) { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); }
+function vnoise(x, y) {                          // value noise 2D
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+function fbm(x, y, o) { let s = 0, a = .5, f = 1, n = 0; for (let i = 0; i < o; i++) { s += vnoise(x * f, y * f) * a; n += a; a *= .5; f *= 2; } return s / n; }
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+const T_SIZE = 360, T_N = 120, T_D = T_SIZE / T_N, T_HALF = T_SIZE / 2, T_W = T_N + 1;
+const SITE = { x: 0, y: 0.2, z: 14 };            // lokasi area rakit (pad)
+const PAD_HALF = 4.7;
+const hGrid = new Float32Array(T_W * T_W);
+
+function genHeight(ix, iz) {
+  const x = ix * T_D - T_HALF, z = iz * T_D - T_HALF;
+  const rr = Math.hypot(x, z - 6);
+  const flatF = sstep(26, 95, rr);                                   // dataran luas di tengah
+  let h = (fbm(x * .011, z * .011, 4) - .5) * 46 * flatF;            // bukit
+  const m = sstep(90, 175, rr);                                      // cincin gunung
+  const ridge = 1 - Math.abs(2 * fbm(x * .012 + 9, z * .012 + 4, 4) - 1);
+  h += m * (18 + ridge * ridge * 80);
+  h += (hash2(ix, iz) - .5) * (1 + m * 5) * flatF;                   // kasar/rugged
+  const cm = sstep(.5, .7, fbm(x * .018 - 5, z * .018 + 7, 2));      // tebing berundak
+  const s = h / 6, f = Math.floor(s), fr = s - f;
+  h += (((f + sstep(.4, .6, fr)) * 6) - h) * cm * .85 * flatF;
+  return h;
+}
+for (let iz = 0; iz < T_W; iz++) for (let ix = 0; ix < T_W; ix++) hGrid[iz * T_W + ix] = genHeight(ix, iz);
+
+// Interpolasi tinggi persis sesuai triangulasi mesh: (00,01,11) & (00,11,10)
+function cellInfo(x, z) {
+  const gx = clamp((x + T_HALF) / T_D, 0, T_N - 1e-4), gz = clamp((z + T_HALF) / T_D, 0, T_N - 1e-4);
+  const ix = gx | 0, iz = gz | 0;
+  return [ix, iz, gx - ix, gz - iz];
+}
+function terrainY(x, z) {
+  const [ix, iz, u, v] = cellInfo(x, z);
+  const h00 = hGrid[iz * T_W + ix], h10 = hGrid[iz * T_W + ix + 1], h01 = hGrid[(iz + 1) * T_W + ix], h11 = hGrid[(iz + 1) * T_W + ix + 1];
+  return v >= u ? h00 + u * (h11 - h01) + v * (h01 - h00) : h00 + v * (h11 - h10) + u * (h10 - h00);
+}
+function groundNormal(x, z, out) {
+  const [ix, iz, u, v] = cellInfo(x, z);
+  const h00 = hGrid[iz * T_W + ix], h10 = hGrid[iz * T_W + ix + 1], h01 = hGrid[(iz + 1) * T_W + ix], h11 = hGrid[(iz + 1) * T_W + ix + 1];
+  let dx, dz;
+  if (v >= u) { dx = (h11 - h01) / T_D; dz = (h01 - h00) / T_D; } else { dx = (h10 - h00) / T_D; dz = (h11 - h10) / T_D; }
+  return out.set(-dx, 1, -dz).normalize();
+}
+// Permukaan efektif = terrain + pad rakit (datar)
+function surfaceY(x, z) {
+  const t = terrainY(x, z);
+  return (Math.abs(x - SITE.x) < PAD_HALF && Math.abs(z - SITE.z) < PAD_HALF) ? Math.max(t, SITE.y) : t;
+}
+
+function terrainColor(cy, ny, r) {
+  if (cy > 62 && ny > .55) return [.92 + r * .06, .94 + r * .05, .97];        // salju di puncak
+  if (ny < .70) { const g = .36 + r * .14; return [g, g * .97, g * .92]; }     // tebing batu abu-abu
+  if (ny < .82) { const g = .36 + r * .1; return [g + .14, g + .03, g * .7]; } // tanah berbatu
+  const t = clamp(cy / 40, 0, 1);                                              // rumput
+  return [.25 + r * .08 + t * .10, .62 + r * .10 - t * .14, .17 + r * .05];
+}
+(function buildTerrain() {
+  const tris = T_N * T_N * 2, pos = new Float32Array(tris * 9), col = new Float32Array(tris * 9);
+  let p = 0;
+  const put = (x, y, z, c) => { pos[p] = x; pos[p + 1] = y; pos[p + 2] = z; col[p] = c[0]; col[p + 1] = c[1]; col[p + 2] = c[2]; p += 3; };
+  for (let iz = 0; iz < T_N; iz++) for (let ix = 0; ix < T_N; ix++) {
+    const x0 = ix * T_D - T_HALF, z0 = iz * T_D - T_HALF, x1 = x0 + T_D, z1 = z0 + T_D;
+    const h00 = hGrid[iz * T_W + ix], h10 = hGrid[iz * T_W + ix + 1], h01 = hGrid[(iz + 1) * T_W + ix], h11 = hGrid[(iz + 1) * T_W + ix + 1];
+    // segitiga A
+    let ny = T_D / Math.hypot(h11 - h01, T_D, h01 - h00) ; // aproksimasi normal.y
+    let c = terrainColor((h00 + h01 + h11) / 3, ny, hash2(ix * 2, iz));
+    put(x0, h00, z0, c); put(x0, h01, z1, c); put(x1, h11, z1, c);
+    // segitiga B
+    ny = T_D / Math.hypot(h10 - h00, T_D, h11 - h10);
+    c = terrainColor((h00 + h11 + h10) / 3, ny, hash2(ix * 2 + 1, iz));
+    put(x0, h00, z0, c); put(x1, h11, z1, c); put(x1, h10, z0, c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.computeVertexNormals();                                       // non-indexed => flat shading
+  scene.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true })));
+})();
+
+// Pad area rakit
+const pad = new THREE.Mesh(new THREE.BoxGeometry(PAD_HALF * 2, .4, PAD_HALF * 2), lam(0x8d949b));
+pad.position.set(SITE.x, 0, SITE.z); scene.add(pad);
+const grid = new THREE.GridHelper(9, 9, 0x9be4ff, 0x4f86ad);
+grid.position.set(SITE.x, SITE.y + .02, SITE.z); grid.visible = false; scene.add(grid);
+
+// Awan sederhana (kotak putih, murah)
+const clouds = [];
+{ const cm = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  for (let i = 0; i < 12; i++) {
+    const g = new THREE.Group();
+    for (let k = 0; k < 4; k++) { const b = new THREE.Mesh(new THREE.BoxGeometry(10 + rand() * 12, 3 + rand() * 2, 7 + rand() * 6), cm); b.position.set(k * 9 - 14 + rand() * 4, rand() * 2, rand() * 6); g.add(b); }
+    g.position.set((rand() * 2 - 1) * 200, 110 + rand() * 50, (rand() * 2 - 1) * 200); scene.add(g); clouds.push(g);
+  } }
+
+/* ------------------------------------------------------------------ *
+ * 3. POHON & BATU  (InstancedMesh => draw call minimal)
+ * ------------------------------------------------------------------ */
+// Spatial hash untuk collision pemain (pohon/batu)
+const OB_CELL = 8, obGrid = new Map();
+const obKey = (cx, cz) => (cx + 64) * 256 + (cz + 64);
+function obAdd(o) { const k = obKey(Math.floor(o.x / OB_CELL), Math.floor(o.z / OB_CELL)); let a = obGrid.get(k); if (!a) obGrid.set(k, a = []); a.push(o); }
+function obResolve(p, rad) {
+  const cx = Math.floor(p.x / OB_CELL), cz = Math.floor(p.z / OB_CELL);
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+    const a = obGrid.get(obKey(cx + dx, cz + dz)); if (!a) continue;
+    for (const o of a) {
+      if (o.alive === false) continue;
+      const ex = p.x - o.x, ez = p.z - o.z, d = Math.hypot(ex, ez), mn = o.r + rad;
+      if (d < mn && d > 1e-4) { p.x = o.x + ex / d * mn; p.z = o.z + ez / d * mn; }
+    }
+  }
+}
+
+const treeData = [];
+(function placeTrees() {
+  const N = 420, v = new THREE.Vector3();
+  const add = (x, z) => { const y = terrainY(x, z);
+    treeData.push({ x, y, z, s: .8 + rand() * .9, hp: 3, type: rand() < .3 ? 1 : 0, state: 0, t: 0, dx: 0, dz: 0, shake: 0, rotY: rand() * TAU, alive: true, r: 0 });
+    const t = treeData[treeData.length - 1]; t.r = .35 * t.s; obAdd(t); };
+  // beberapa pohon "starter" dekat area spawn
+  for (let i = 0; i < 9; i++) { const a = rand() * TAU, d = 16 + rand() * 14; add(SITE.x + Math.cos(a) * d, SITE.z + Math.sin(a) * d - 8); }
+  let tries = 0;
+  while (treeData.length < N && tries++ < 9000) {
+    const x = (rand() * 2 - 1) * (T_HALF - 8), z = (rand() * 2 - 1) * (T_HALF - 8);
+    if (Math.hypot(x - SITE.x, z - SITE.z) < 14) continue;
+    if (Math.abs(x - SITE.x) < 7 && z < SITE.z + 6 && z > -75) continue;         // jalur landasan bebas pohon
+    const y = terrainY(x, z); if (y > 55) continue;
+    groundNormal(x, z, v); if (v.y < .78) continue;
+    if (y > 30 && rand() < .5) continue;
+    if (vnoise(x * .03, z * .03) < .38 && rand() < .75) continue;               // bergerombol
+    add(x, z);
+  }
+})();
+const NT = treeData.length;
+const geoTrunk = flat(new THREE.CylinderGeometry(.22, .32, 2.2, 5).translate(0, 1.1, 0));
+const geoCone1 = flat(new THREE.ConeGeometry(1.5, 2.4, 6).translate(0, 2.4, 0));
+const geoCone2 = flat(new THREE.ConeGeometry(1.05, 2.0, 6).translate(0, 3.9, 0));
+const geoCube = new THREE.BoxGeometry(2.2, 2.0, 2.2).translate(0, 3.2, 0);
+const treeMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+const mkInst = (g, n) => { const m = new THREE.InstancedMesh(g, treeMat, n); m.frustumCulled = false; scene.add(m); return m; };
+const iTrunk = mkInst(geoTrunk, NT), iCone1 = mkInst(geoCone1, NT), iCone2 = mkInst(geoCone2, NT), iCube = mkInst(geoCube, NT);
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _sv = new THREE.Vector3(), _ax = new THREE.Vector3();
+const Y_AXIS = new THREE.Vector3(0, 1, 0), X_AXIS = new THREE.Vector3(1, 0, 0), Z_AXIS = new THREE.Vector3(0, 0, 1);
+const _c = new THREE.Color();
+function writeTree(i) {
+  const t = treeData[i];
+  if (t.state === 2) { iTrunk.setMatrixAt(i, ZERO); iCone1.setMatrixAt(i, ZERO); iCone2.setMatrixAt(i, ZERO); iCube.setMatrixAt(i, ZERO); return; }
+  let sc = t.s; _q.setFromAxisAngle(Y_AXIS, t.rotY);
+  if (t.state === 1) {                       // animasi tumbang
+    const f = Math.min(1, t.t / .7);
+    _ax.set(t.dz, 0, -t.dx); _q2.setFromAxisAngle(_ax, f * f * 1.5); _q.premultiply(_q2);
+    if (t.t > .7) sc *= Math.max(0, 1 - (t.t - .7) / .25);
+  } else if (t.shake > 0) {                  // getar saat dipukul
+    _q2.setFromAxisAngle(X_AXIS, Math.sin(t.shake * 70) * t.shake * .5); _q.premultiply(_q2);
+  }
+  _m.compose(_p.set(t.x, t.y, t.z), _q, _sv.setScalar(sc));
+  iTrunk.setMatrixAt(i, _m);
+  if (t.type === 0) { iCone1.setMatrixAt(i, _m); iCone2.setMatrixAt(i, _m); iCube.setMatrixAt(i, ZERO); }
+  else { iCube.setMatrixAt(i, _m); iCone1.setMatrixAt(i, ZERO); iCone2.setMatrixAt(i, ZERO); }
+}
+for (let i = 0; i < NT; i++) {
+  const t = treeData[i];
+  iTrunk.setColorAt(i, _c.setRGB(.42 + rand() * .1, .27 + rand() * .06, .13));
+  const g = rand();
+  iCone1.setColorAt(i, _c.setRGB(.10 + g * .06, .45 + g * .15, .15 + g * .05));
+  iCone2.setColorAt(i, _c.setRGB(.12 + g * .06, .52 + g * .15, .18 + g * .05));
+  iCube.setColorAt(i, _c.setRGB(.28 + g * .1, .62 + g * .12, .16));
+  writeTree(i);
+}
+const markTrees = () => { for (const m of [iTrunk, iCone1, iCone2, iCube]) m.instanceMatrix.needsUpdate = true; };
+[iTrunk, iCone1, iCone2, iCube].forEach(m => m.instanceColor.needsUpdate = true);
+markTrees();
+const animTrees = new Set();
+
+// Batu
+(function placeRocks() {
+  const N = 170, geo = flat(new THREE.IcosahedronGeometry(1, 0));
+  const inst = new THREE.InstancedMesh(geo, treeMat, N); inst.frustumCulled = false;
+  const v = new THREE.Vector3(); let n = 0, tries = 0;
+  while (n < N && tries++ < 4000) {
+    const x = (rand() * 2 - 1) * (T_HALF - 8), z = (rand() * 2 - 1) * (T_HALF - 8);
+    if (Math.hypot(x - SITE.x, z - SITE.z) < 12 || (Math.abs(x - SITE.x) < 5 && z < SITE.z && z > -75)) continue;
+    const y = terrainY(x, z); if (y > 70) continue;
+    const s = .6 + rand() * 1.5;
+    _q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 6, rand() * 3));
+    _m.compose(_p.set(x, y - s * .25, z), _q, _sv.set(s * (.9 + rand() * .5), s * (.6 + rand() * .4), s * (.9 + rand() * .5)));
+    inst.setMatrixAt(n, _m); const g = .38 + rand() * .2; inst.setColorAt(n, _c.setRGB(g, g * .97, g * .93));
+    if (s > .9) obAdd({ x, z, r: s * .85 });
+    n++;
+  }
+  inst.count = n; inst.instanceColor.needsUpdate = true; scene.add(inst);
+})();
+
+/* ------------------------------------------------------------------ *
+ * 4. KARAKTER BLOCKY + animasi
+ * ------------------------------------------------------------------ */
+const boxMesh = (w, h, d, color) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), lam(color));
+const player = { x: SITE.x + 7, y: 0, z: SITE.z, vy: 0, grounded: true, yaw: Math.PI, walkPh: 0, root: new THREE.Group() };
+player.y = surfaceY(player.x, player.z);
+const model = new THREE.Group(); player.root.add(model);
+function pivot(parent, x, y, z) { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); return g; }
+const legL = pivot(model, -.2, .8, 0), legR = pivot(model, .2, .8, 0);
+[legL, legR].forEach(p => { const m = boxMesh(.34, .8, .38, 0x3a63b8); m.position.y = -.4; p.add(m); });
+const torso = boxMesh(.82, .9, .46, 0xd8483d); torso.position.y = 1.25; model.add(torso);
+const head = boxMesh(.56, .56, .56, 0xf0c49a); head.position.y = 1.98; model.add(head);
+{ const hair = boxMesh(.58, .16, .58, 0x5a3a1f); hair.position.y = 2.2; model.add(hair);
+  [-.14, .14].forEach(x => { const e = boxMesh(.08, .08, .04, 0x222222); e.position.set(x, 2.0, .29); model.add(e); }); }
+const armL = pivot(model, -.56, 1.65, 0), armR = pivot(model, .56, 1.65, 0);
+[armL, armR].forEach(p => { const m = boxMesh(.26, .8, .3, 0xf0c49a); m.position.y = -.35; p.add(m);
+  const s = boxMesh(.28, .3, .32, 0xd8483d); s.position.y = -.05; p.add(s); });
+{ // kapak di tangan kanan
+  const h = boxMesh(.07, .6, .07, 0x6b4a26); h.position.set(0, -.95, .08); armR.add(h);
+  const hd = boxMesh(.07, .22, .34, 0xb9c0c8); hd.position.set(0, -1.18, .22); armR.add(hd); }
+scene.add(player.root);
+// bayangan blob murah (pengganti shadow map)
+const blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .3, depthWrite: false });
+const blobGeo = new THREE.CircleGeometry(1, 10).rotateX(-Math.PI / 2);
+const playerBlob = new THREE.Mesh(blobGeo, blobMat); playerBlob.scale.setScalar(.7); scene.add(playerBlob);
+const vehBlob = new THREE.Mesh(blobGeo, blobMat); scene.add(vehBlob);
+
+const chop = { active: false, t: 0, hit: false, cd: 0 };
+
+/* ------------------------------------------------------------------ *
+ * 6. PARTICLE SYSTEM (pool Points, tanpa alokasi per frame)
+ * ------------------------------------------------------------------ */
+function makePS(N, size, additive) {
+  const pos = new Float32Array(N * 3).fill(-9999), col = new Float32Array(N * 3), vel = new Float32Array(N * 3);
+  const life = new Float32Array(N), mx = new Float32Array(N).fill(1), c0 = new Float32Array(N * 3), c1 = new Float32Array(N * 3), gr = new Float32Array(N);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size, vertexColors: true, transparent: additive, depthWrite: false,
+    blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending }));
+  pts.frustumCulled = false; scene.add(pts);
+  let head = 0, dirty = false;
+  return {
+    emit(x, y, z, vx, vy, vz, l, a, b, g) {
+      const i = head; head = (head + 1) % N; const k = i * 3;
+      pos[k] = x; pos[k + 1] = y; pos[k + 2] = z; vel[k] = vx; vel[k + 1] = vy; vel[k + 2] = vz;
+      life[i] = mx[i] = l; gr[i] = g || 0;
+      c0[k] = a[0]; c0[k + 1] = a[1]; c0[k + 2] = a[2]; c1[k] = b[0]; c1[k + 1] = b[1]; c1[k + 2] = b[2]; dirty = true;
+    },
+    update(dt) {
+      for (let i = 0; i < N; i++) {
+        if (life[i] <= 0) continue; const k = i * 3;
+        life[i] -= dt; dirty = true;
+        if (life[i] <= 0) { pos[k + 1] = -9999; continue; }
+        const t = 1 - life[i] / mx[i];
+        vel[k + 1] -= gr[i] * dt;
+        pos[k] += vel[k] * dt; pos[k + 1] += vel[k + 1] * dt; pos[k + 2] += vel[k + 2] * dt;
+        const f = additive ? Math.min(1, (1 - t) * 2.2) : 1;
+        col[k] = (c0[k] + (c1[k] - c0[k]) * t) * f; col[k + 1] = (c0[k + 1] + (c1[k + 1] - c0[k + 1]) * t) * f; col[k + 2] = (c0[k + 2] + (c1[k + 2] - c0[k + 2]) * t) * f;
+      }
+      if (dirty) { geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true; dirty = false; }
+    }
+  };
+}
+const fireFX = makePS(260, 1.3, true);    // api roket (kuning -> merah)
+const dustFX = makePS(220, .8, false);    // debu, serpihan, daun
+const C_YEL = [1, .88, .3], C_RED = [.7, .08, 0], C_DUST = [.62, .52, .38], C_FOG = [.68, .85, 1], C_LEAF = [.2, .7, .2], C_WOOD = [.55, .36, .17], C_SPARK = [1, .9, .6];
+function burst(x, y, z, n, a, b, speed, up, life) {
+  for (let i = 0; i < n; i++) dustFX.emit(x, y, z, (Math.random() - .5) * speed, Math.random() * speed * .8 + up, (Math.random() - .5) * speed, life * (.6 + Math.random() * .6), a, b, 9);
+}
+
+/* ------------------------------------------------------------------ *
+ * 7. MODE BUILD  (grid snap 1 unit, raycast ke proxy per-sel)
+ * ------------------------------------------------------------------ */
+const vehGroup = new THREE.Group(); scene.add(vehGroup);
+const partRoot = new THREE.Group(); vehGroup.add(partRoot);   // berisi part dalam koordinat build; digeser ke pusat massa saat terbang
+vehGroup.position.set(SITE.x, SITE.y, SITE.z);
+const parts = new Map();          // key "i,j,k" -> {type,i,j,k,mesh,proxy}
+const pickTargets = [pad];
+const woodMats = [lam(0xb07a3f), lam(0xa56d34), lam(0xbb8449)];
+const G = {
+  block: new THREE.BoxGeometry(1, 1, 1), stripe: new THREE.BoxGeometry(1.02, .09, 1.02),
+  wing: new THREE.BoxGeometry(1, .14, 1),
+  thr: flat(new THREE.CylinderGeometry(.3, .3, .8, 8).rotateX(Math.PI / 2)),
+  noz: flat(new THREE.CylinderGeometry(.36, .3, .22, 8).rotateX(Math.PI / 2).translate(0, 0, .45)),
+  nose: flat(new THREE.ConeGeometry(.3, .36, 8).rotateX(-Math.PI / 2).translate(0, 0, -.58)),
+  proxy: new THREE.BoxGeometry(1, 1, 1)
+};
+const proxyMat = new THREE.MeshBasicMaterial({ visible: false });
+function makePartMesh(type) {
+  const g = new THREE.Group();
+  if (type === 'block') {
+    g.add(new THREE.Mesh(G.block, woodMats[(Math.random() * 3) | 0]));
+    [.2, -.2].forEach(y => { const s = new THREE.Mesh(G.stripe, lam(0x7a4c22)); s.position.y = y; g.add(s); });
+  } else if (type === 'wing') {
+    g.add(new THREE.Mesh(G.wing, lam(0xd5dae0)));
+  } else {
+    g.add(new THREE.Mesh(G.thr, lam(0xf2f2f2))); g.add(new THREE.Mesh(G.noz, lam(0xd62b2b))); g.add(new THREE.Mesh(G.nose, lam(0xd62b2b)));
+  }
+  return g;
+}
+const inv = { wood: 10 };
+const state = { tool: 'block' };
+function setWood(n) { inv.wood = n; $('woodCount').textContent = n; $('slotWood').textContent = n; }
+setWood(inv.wood);
+
+function addPart(type, i, j, k, silent) {
+  const key = i + ',' + j + ',' + k; if (parts.has(key)) return false;
+  if (type === 'block') { if (inv.wood < 1 && !silent) { toast('Kayu tidak cukup! Tebang pohon dulu 🌲'); return false; } if (!silent) setWood(inv.wood - 1); }
+  const mesh = makePartMesh(type); mesh.position.set(i, j + .5, k); partRoot.add(mesh);
+  const proxy = new THREE.Mesh(G.proxy, proxyMat); proxy.position.copy(mesh.position); proxy.userData.key = key; partRoot.add(proxy); pickTargets.push(proxy);
+  parts.set(key, { type, i, j, k, mesh, proxy }); updateStats(); return true;
+}
+function removePart(key, refund) {
+  const p = parts.get(key); if (!p) return;
+  partRoot.remove(p.mesh); partRoot.remove(p.proxy); pickTargets.splice(pickTargets.indexOf(p.proxy), 1);
+  parts.delete(key); if (p.type === 'block' && refund) setWood(inv.wood + 1); updateStats();
+}
+function clearParts(refund) { for (const k of [...parts.keys()]) removePart(k, refund); }
+
+// Statistik kendaraan
+function computeStats() {
+  let blocks = 0, wings = 0, thr = 0;
+  parts.forEach(p => { if (p.type === 'block') blocks++; else if (p.type === 'wing') wings++; else thr++; });
+  const mass = 1 + blocks + wings * .4 + thr * .8;
+  return { blocks, wings, thr, mass, count: parts.size };
+}
+function updateStats() {
+  const s = computeStats();
+  $('statLine1').textContent = `Blok ${s.blocks} • Sayap ${s.wings} • Roket ${s.thr}`;
+  $('statLine2').textContent = `Massa ${s.mass.toFixed(1)} • Dorongan ${(s.thr * PHYS.THRUST / s.mass).toFixed(1)} m/s²`;
+}
+
+// Ghost preview (hover mouse) & picking
+const ghost = new THREE.Mesh(new THREE.BoxGeometry(1.04, 1.04, 1.04), new THREE.MeshBasicMaterial({ color: 0x66ff88, transparent: true, opacity: .4, depthWrite: false }));
+ghost.visible = false; partRoot.add(ghost);
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pickCell(cx, cy) {
+  ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects(pickTargets, false); if (!hits.length) return null;
+  const h = hits[0], n = h.face.normal;
+  if (state.tool === 'del') return h.object.userData.key ? { key: h.object.userData.key, ...parts.get(h.object.userData.key) } : null;
+  const lx = h.point.x + n.x * .5 - SITE.x, ly = h.point.y + n.y * .5 - SITE.y, lz = h.point.z + n.z * .5 - SITE.z;
+  const i = Math.floor(lx + .5), j = Math.floor(ly), k = Math.floor(lz + .5);
+  if (Math.abs(i) > 4 || Math.abs(k) > 4 || j < 0 || j > 7) return null;
+  return { i, j, k };
+}
+function updateGhost(cx, cy) {
+  const c = pickCell(cx, cy); if (!c) { ghost.visible = false; return; }
+  ghost.visible = true; ghost.position.set(c.i, c.j + .5, c.k);
+  const ok = state.tool === 'del' ? true : !parts.has(c.i + ',' + c.j + ',' + c.k);
+  ghost.material.color.setHex(state.tool === 'del' ? 0xff5555 : ok ? 0x66ff88 : 0xff5555);
+}
+function buildTap(cx, cy) {
+  const c = pickCell(cx, cy); if (!c) return;
+  if (state.tool === 'del') { removePart(c.key, true); }
+  else if (addPart(state.tool, c.i, c.j, c.k)) burst(SITE.x + c.i, SITE.y + c.j + .5, SITE.z + c.k, 5, C_SPARK, C_DUST, 2, 1, .4);
+  ghost.visible = false;
+}
+document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('pointerdown', e => {
+  e.preventDefault(); state.tool = b.dataset.tool;
+  document.querySelectorAll('[data-tool]').forEach(x => x.classList.toggle('active', x === b));
+}));
+$('btnClear').addEventListener('pointerdown', e => { e.preventDefault(); clearParts(true); });
+$('btnPreset').addEventListener('pointerdown', e => {      // template pesawat roket siap terbang (gratis, untuk uji coba)
+  e.preventDefault(); clearParts(true);
+  [[0, 0, -1], [0, 0, 0], [0, 0, 1]].forEach(c => addPart('block', ...c, true));
+  [[-1, 0, 0], [-2, 0, 0], [1, 0, 0], [2, 0, 0], [-1, 0, -1], [1, 0, -1]].forEach(c => addPart('wing', ...c, true));
+  [[-1, 0, 1], [1, 0, 1], [0, 0, 2]].forEach(c => addPart('thruster', ...c, true));
+  toast('Preset pesawat dimuat. Tekan Selesai!');
+});
+
+/* ------------------------------------------------------------------ *
+ * 8. FISIKA KENDARAAN (gravitasi, drag, lift sayap, thrust roket)
+ * ------------------------------------------------------------------ */
+const PHYS = { GRAV: 9.0, THRUST: 22, CL: .045, MAXLIFT_G: 2.2 };
+const veh = {
+  pos: new THREE.Vector3(), quat: new THREE.Quaternion(), vel: new THREE.Vector3(), c: new THREE.Vector3(),
+  stats: computeStats(), corners: [], thrusters: [], camF: new THREE.Vector3(0, 0, -1), impactCd: 0, sim: false
+};
+const _f = new THREE.Vector3(), _u = new THREE.Vector3(), _r = new THREE.Vector3(), _a = new THREE.Vector3(), _t1 = new THREE.Vector3(), _n = new THREE.Vector3(), _t2 = new THREE.Vector3();
+function applyVehicleTransform() { vehGroup.position.copy(veh.pos); vehGroup.quaternion.copy(veh.quat); }
+function prepareVehicle() {
+  const st = veh.stats = computeStats();
+  const mn = new THREE.Vector3(1e9, 1e9, 1e9), mxv = new THREE.Vector3(-1e9, -1e9, -1e9);
+  parts.forEach(p => { mn.min(_t1.set(p.i, p.j + .5, p.k)); mxv.max(_t1); });
+  if (!parts.size) { mn.set(0, .5, 0); mxv.set(0, .5, 0); }
+  veh.c.addVectors(mn, mxv).multiplyScalar(.5);
+  partRoot.position.copy(veh.c).negate();                       // pivot di pusat bounding
+  const h = new THREE.Vector3().subVectors(mxv, mn).multiplyScalar(.5).addScalar(.5);
+  veh.corners.length = 0;
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) veh.corners.push(new THREE.Vector3(sx * h.x, sy * h.y, sz * h.z));
+  veh.corners.push(new THREE.Vector3(0, -h.y, 0));
+  veh.thrusters.length = 0;
+  parts.forEach(p => { if (p.type === 'thruster') veh.thrusters.push(new THREE.Vector3(p.i, p.j + .5, p.k).sub(veh.c).add(_t1.set(0, 0, .6))); });
+  veh.pos.set(SITE.x + veh.c.x, SITE.y + veh.c.y, SITE.z + veh.c.z);
+  veh.quat.identity(); veh.vel.set(0, 0, 0); veh.camF.set(0, 0, -1); veh.sim = true; applyVehicleTransform();
+}
+function stepVehicle(dt, driving) {
+  const st = veh.stats;
+  _f.set(0, 0, -1).applyQuaternion(veh.quat); _u.set(0, 1, 0).applyQuaternion(veh.quat); _r.set(1, 0, 0).applyQuaternion(veh.quat);
+  const ax = driving ? getAxis() : { x: 0, y: 0 }, gas = driving && gasHeld() && st.thr > 0;
+  const speed = veh.vel.length(), vf = veh.vel.dot(f_());
+  function f_() { return _f; }
+  const auth = .35 + Math.min(1, speed / 14) * .65 + (st.wings > 0 ? .2 : 0);
+  const wingsC = Math.min(st.wings, 10);
+
+  /* --- rotasi: input pemain + stabilitas dari sayap --- */
+  let dPitch = ax.y * 1.3 * auth * dt, dRoll = -ax.x * 2.0 * auth * dt, dYaw = -ax.x * .35 * auth * dt;
+  if (Math.abs(ax.x) < .1) dRoll += -_r.y * (.3 + wingsC * .12) * 2 * dt;                // auto-level roll
+  if (speed > 4) {
+    const aoa = Math.atan2(veh.vel.dot(_u), vf), beta = Math.atan2(veh.vel.dot(_r), vf);
+    const k = clamp(speed / 15, 0, 1);
+    dPitch += aoa * wingsC * .25 * k * dt;                                             // hidung mengikuti arah gerak
+    dYaw += -beta * wingsC * .2 * k * dt;
+  }
+  if (st.wings === 0 && st.count > 0) dPitch -= .3 * dt;                              // tanpa sayap: hidung jatuh
+  const worldYaw = _r.y * 1.1 * clamp(speed / 12, 0, 1) * (st.wings > 0 ? 1 : .4) * dt; // belok dari bank
+  if (veh.contact && Math.abs(ax.y) < .1) dPitch += -_f.y * 3 * dt;                    // ratakan di tanah
+  _q2.setFromAxisAngle(X_AXIS, dPitch); veh.quat.multiply(_q2);
+  _q2.setFromAxisAngle(Z_AXIS, dRoll); veh.quat.multiply(_q2);
+  _q2.setFromAxisAngle(Y_AXIS, dYaw); veh.quat.multiply(_q2);
+  _q2.setFromAxisAngle(Y_AXIS, worldYaw); veh.quat.premultiply(_q2);
+  veh.quat.normalize();
+
+  /* --- gaya linier --- */
+  _a.set(0, -PHYS.GRAV, 0);
+  if (gas) _a.addScaledVector(_f, st.thr * PHYS.THRUST / st.mass);                     // thrust semua roket
+  const lift = vf > 0 ? Math.min(st.wings * PHYS.CL * vf * vf / st.mass, PHYS.GRAV * PHYS.MAXLIFT_G) : 0;
+  _a.addScaledVector(_u, lift);                                                        // lift sayap
+  const cd = (.03 + .004 * st.count) / st.mass;                                        // drag kuadratik
+  _a.addScaledVector(veh.vel, -cd * speed - .02);
+  veh.vel.addScaledVector(_a, dt);
+  if (vf > 3) {                                                                        // sayap meluruskan vektor kecepatan
+    const al = Math.min(1, (.15 + wingsC * .25) * dt) * clamp(vf / 15, 0, 1);
+    veh.vel.addScaledVector(_t1.copy(_f).multiplyScalar(veh.vel.dot(_f)).sub(veh.vel), al);
+  }
+  veh.pos.addScaledVector(veh.vel, dt);
+
+  /* --- tabrakan tanah/tebing: titik sudut bounding vs terrain --- */
+  let worst = 0, wx = 0, wy = 0, wz = 0; veh.contact = false;
+  for (const c of veh.corners) {
+    _t1.copy(c).applyQuaternion(veh.quat).add(veh.pos);
+    const pen = surfaceY(_t1.x, _t1.z) - _t1.y;
+    if (pen > 0) { veh.contact = true; if (pen > worst) { worst = pen; wx = _t1.x; wy = _t1.y; wz = _t1.z; } }
+  }
+  if (worst > 0) {
+    groundNormal(wx, wz, _n);
+    veh.pos.addScaledVector(_n, Math.min(worst, 3));
+    const vn = veh.vel.dot(_n);
+    if (vn < 0) {
+      veh.vel.addScaledVector(_n, -vn * 1.1);
+      if (-vn > 7 && veh.impactCd <= 0) {                                            // efek benturan + kendaraan sedikit bergeser
+        veh.impactCd = .3; shake = Math.min(1, -vn / 22); veh.vel.multiplyScalar(.85);
+        burst(wx, wy, wz, 16, C_DUST, C_FOG, 7, 2, .8);
+        burst(wx, wy, wz, 5, C_SPARK, C_DUST, 6, 3, .4);
+      }
+    }
+    // gesekan roda: redam gerak menyamping, gelinding sedikit melambat
+    _t1.copy(veh.vel).addScaledVector(_f, -veh.vel.dot(_f));
+    veh.vel.addScaledVector(_t1, -Math.min(1, 6 * dt));
+    if (!gas) veh.vel.addScaledVector(_f, -veh.vel.dot(_f) * .25 * dt);
+  }
+  veh.impactCd -= dt;
+  const lim = T_HALF - 8;
+  if (Math.abs(veh.pos.x) > lim) { veh.pos.x = clamp(veh.pos.x, -lim, lim); veh.vel.x *= -.3; }
+  if (Math.abs(veh.pos.z) > lim) { veh.pos.z = clamp(veh.pos.z, -lim, lim); veh.vel.z *= -.3; }
+  if (veh.pos.y < -50) { veh.pos.set(SITE.x, SITE.y + 6, SITE.z); veh.vel.set(0, 0, 0); }
+
+  /* --- partikel api dari semua roket --- */
+  if (gas) {
+    const n = Math.min(veh.thrusters.length, 4);
+    for (let i = 0; i < n; i++) {
+      const t = veh.thrusters[(Math.random() * veh.thrusters.length) | 0];
+      _t1.copy(t).applyQuaternion(veh.quat).add(veh.pos);
+      const sp = 7 + Math.random() * 5;
+      fireFX.emit(_t1.x, _t1.y, _t1.z, -_f.x * sp + veh.vel.x * .6 + (Math.random() - .5) * 1.5, -_f.y * sp + veh.vel.y * .6 + (Math.random() - .5) * 1.5,
+        -_f.z * sp + veh.vel.z * .6 + (Math.random() - .5) * 1.5, .3 + Math.random() * .3, C_YEL, C_RED, 0);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * 5/9. INPUT, UI, KAMERA & MODE
+ * ------------------------------------------------------------------ */
+let mode = 'play', shake = 0, time = 0;
+const keys = {}, input = { act: false, jump: false };
+const joy = { x: 0, y: 0, id: null };
+const cam = { play: { yaw: 0, pitch: .38, dist: 7.5 }, build: { yaw: .7, pitch: .55, dist: 11 }, drive: { yaw: 0, pitch: 0, dist: 12 } };
+const gasHeld = () => input.act || !!keys.Space;
+function getAxis() {
+  let x = joy.x, y = joy.y;
+  if (keys.KeyA || keys.ArrowLeft) x -= 1; if (keys.KeyD || keys.ArrowRight) x += 1;
+  if (keys.KeyW || keys.ArrowUp) y += 1; if (keys.KeyS || keys.ArrowDown) y -= 1;
+  const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
+  return m < .12 ? { x: 0, y: 0 } : { x, y };
+}
+let toastTimer = 0;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.opacity = 1; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.opacity = 0, 1800); }
+
+// Joystick virtual
+const joyBase = $('joyBase'), joyKnob = $('joyKnob'), JR = 48;
+function moveJoy(e) {
+  const r = joyBase.getBoundingClientRect(); let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  const d = Math.hypot(dx, dy); if (d > JR) { dx *= JR / d; dy *= JR / d; }
+  joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`; joy.x = dx / JR; joy.y = -dy / JR;
+}
+function endJoy(e) { if (e.pointerId !== joy.id) return; joy.id = null; joy.x = joy.y = 0; joyKnob.style.transform = 'translate(-50%,-50%)'; }
+joyBase.addEventListener('pointerdown', e => { e.preventDefault(); joy.id = e.pointerId; joyBase.setPointerCapture(e.pointerId); moveJoy(e); });
+joyBase.addEventListener('pointermove', e => { if (e.pointerId === joy.id) moveJoy(e); });
+joyBase.addEventListener('pointerup', endJoy); joyBase.addEventListener('pointercancel', endJoy);
+
+// Tombol hold (tebang/gas, lompat) & tap (interaksi, craft)
+function hold(el, key) {
+  el.addEventListener('pointerdown', e => { e.preventDefault(); input[key] = true; el.classList.add('down'); el.setPointerCapture(e.pointerId); });
+  const up = () => { input[key] = false; el.classList.remove('down'); };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+}
+hold($('btnChop'), 'act'); hold($('btnJump'), 'jump');
+$('btnAct').addEventListener('pointerdown', e => { e.preventDefault(); interact(); });
+$('btnCraft').addEventListener('pointerdown', e => { e.preventDefault(); toggleCraft(); });
+// Popup pengaturan: kualitas grafis + limit FPS + fullscreen
+const popup = $('settingsPopup');
+let fpsLimit = 60;
+function refreshQualityUI() {
+  document.querySelectorAll('.qbtn').forEach(b => {
+    const act = +b.dataset.q === qIdx;
+    b.style.borderColor = act ? '#fff' : 'transparent';
+    b.style.background = act ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)';
+  });
+}
+function refreshFpsLimitUI() {
+  document.querySelectorAll('.fps-btn').forEach(b => {
+    const act = +b.dataset.fps === fpsLimit;
+    b.style.borderColor = act ? '#fff' : 'transparent';
+    b.style.background = act ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)';
+  });
+}
+function refreshFsUI() { $('btnFullscreen').textContent = '⛶ Fullscreen: ' + (document.fullscreenElement || document.webkitFullscreenElement ? 'On' : 'Off'); }
+$('btnMenu').addEventListener('pointerdown', e => { e.preventDefault(); popup.classList.toggle('hidden'); refreshQualityUI(); refreshFpsLimitUI(); refreshFsUI(); });
+$('btnCloseSettings').addEventListener('pointerdown', e => { e.preventDefault(); popup.classList.add('hidden'); });
+document.querySelectorAll('.qbtn').forEach(b => b.addEventListener('pointerdown', e => {
+  e.preventDefault(); qIdx = +b.dataset.q; applyQuality(); refreshQualityUI(); toast(`Kualitas grafis: ${QUALITY[qIdx].name}`);
+}));
+document.querySelectorAll('.fps-btn').forEach(b => b.addEventListener('pointerdown', e => {
+  e.preventDefault(); fpsLimit = +b.dataset.fps; refreshFpsLimitUI(); toast(`Limit FPS: ${fpsLimit}`);
+}));
+$('btnFullscreen').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const el = document.documentElement;
+  if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else { const f = el.requestFullscreen || el.webkitRequestFullscreen; if (f) f.call(el); else toast('Fullscreen tidak didukung browser ini'); }
+});
+document.addEventListener('fullscreenchange', () => { refreshFsUI(); applyQuality(); });
+document.addEventListener('webkitfullscreenchange', () => { refreshFsUI(); applyQuality(); });
+
+addEventListener('keydown', e => {
+  if (e.repeat) return; keys[e.code] = true;
+  if (e.code === 'KeyC') toggleCraft(); if (e.code === 'KeyF') interact();
+  if (e.code === 'Space') e.preventDefault();
+});
+addEventListener('keyup', e => keys[e.code] = false);
+
+// Drag kamera + pinch zoom + tap (build) di canvas
+const pointers = new Map(); let pinch0 = 0;
+const pinchDist = () => { const a = [...pointers.values()]; return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); };
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 });
+  if (pointers.size === 2) pinch0 = pinchDist();
+});
+canvas.addEventListener('pointermove', e => {
+  const p = pointers.get(e.pointerId);
+  if (!p) { if (mode === 'build' && e.pointerType === 'mouse') updateGhost(e.clientX, e.clientY); return; }
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; p.moved += Math.abs(dx) + Math.abs(dy);
+  const c = cam[mode];
+  if (pointers.size === 1) { c.yaw -= dx * .006; c.pitch = clamp(c.pitch + dy * .005, -.2, 1.3); }
+  else if (pointers.size === 2) { const d = pinchDist(); if (pinch0 > 0) c.dist = clamp(c.dist * pinch0 / d, 4, mode === 'drive' ? 30 : 22); pinch0 = d; }
+});
+function endPtr(e) {
+  const p = pointers.get(e.pointerId); if (!p) return;
+  if (mode === 'build' && pointers.size === 1 && p.moved < 10 && performance.now() - p.t < 450) buildTap(e.clientX, e.clientY);
+  pointers.delete(e.pointerId);
+}
+canvas.addEventListener('pointerup', endPtr); canvas.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
+canvas.addEventListener('wheel', e => { const c = cam[mode]; c.dist = clamp(c.dist + e.deltaY * .01, 4, 30); }, { passive: true });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+/* ---------- Mode switching ---------- */
+function setMode(m) {
+  mode = m; document.body.dataset.mode = m;
+  $('craftLbl').textContent = m === 'build' ? 'Selesai' : 'Craft';
+  $('chopIco').textContent = m === 'drive' ? '🔥' : '🪓'; $('chopLbl').textContent = m === 'drive' ? 'GAS' : 'Tebang';
+  $('actIco').textContent = m === 'drive' ? '⬇️' : '🚀'; $('actLbl').textContent = m === 'drive' ? 'Turun' : 'Interaksi';
+  joy.x = joy.y = 0; joyKnob.style.transform = 'translate(-50%,-50%)';
+}
+function toggleCraft() {
+  if (mode === 'build') {                       // selesai merakit
+    grid.visible = false; ghost.visible = false; pad.visible = true;
+    prepareVehicle(); player.x = SITE.x + 6.5; player.z = SITE.z + 1; player.y = surfaceY(player.x, player.z); player.vy = 0;
+    cam.play.yaw = 0; setMode('play');
+    toast(parts.size ? 'Kendaraan siap! Dekati lalu tekan Interaksi 🚀' : 'Kendaraan masih kosong');
+  } else {
+    if (mode === 'drive') leaveVehicle();
+    const nearCraft = Math.hypot(player.x - SITE.x, player.z - SITE.z) <= 8.5;
+    if (!nearCraft) {
+      toast('Mendekatlah ke landasan rakit (pad) untuk Craft 🔨');
+      return;
+    }
+    // kendaraan dikembalikan ke area rakit untuk diedit
+    veh.sim = false; partRoot.position.set(0, 0, 0); vehGroup.position.set(SITE.x, SITE.y, SITE.z); vehGroup.quaternion.identity();
+    grid.visible = true; setMode('build'); updateStats();
+    toast('Mode Build: ketuk grid/kendaraan untuk memasang');
+  }
+}
+function interact() {
+  if (mode === 'drive') { leaveVehicle(); return; }
+  if (mode !== 'play') return;
+  if (!parts.size || !veh.sim) { toast('Belum ada kendaraan. Tekan Craft 🔨'); return; }
+  if (Math.hypot(player.x - veh.pos.x, player.z - veh.pos.z) > 9) { toast('Terlalu jauh dari kendaraan'); return; }
+  setMode('drive'); player.root.visible = false; playerBlob.visible = false; cam.drive.yaw = 0; cam.drive.pitch = 0;
+  toast(veh.stats.thr ? 'Tahan GAS 🔥 • Joystick: pitch/belok' : 'Kendaraan belum punya roket!');
+}
+function leaveVehicle() {
+  _r.set(1, 0, 0).applyQuaternion(veh.quat); _r.y = 0; _r.normalize();
+  player.x = veh.pos.x + _r.x * 3.5; player.z = veh.pos.z + _r.z * 3.5; player.y = surfaceY(player.x, player.z) + .2; player.vy = 0;
+  player.root.visible = true; playerBlob.visible = true; setMode('play');
+}
+
+/* ---------- Pemain: gerak, lompat, tebang ---------- */
+function findTree(maxD) {
+  let best = -1, bd = maxD;
+  for (let i = 0; i < NT; i++) { const t = treeData[i]; if (t.state !== 0) continue; const d = Math.hypot(t.x - player.x, t.z - player.z); if (d < bd) { bd = d; best = i; } }
+  return best;
+}
+function applyChopHit() {
+  const i = findTree(3.6);
+  if (i < 0) return;
+  const t = treeData[i]; t.hp--; t.shake = .25; animTrees.add(i);
+  const hx = t.x, hz = t.z, hy = t.y + 1.5;
+  burst(hx, hy, hz, 6, C_LEAF, C_FOG, 4, 1, .6); burst(hx, hy - .5, hz, 4, C_WOOD, C_DUST, 3, 1, .5); shake = Math.max(shake, .12);
+  if (t.hp <= 0) {
+    t.state = 1; t.t = 0; t.alive = false;
+    const dx = t.x - player.x, dz = t.z - player.z, d = Math.hypot(dx, dz) || 1; t.dx = dx / d; t.dz = dz / d;
+    const gain = t.s > 1.3 ? 4 : 3; setWood(inv.wood + gain); toast(`+${gain} Wood 🪵`);
+  }
+}
+function updatePlayer(dt) {
+  const a = getAxis(), sy = Math.sin(cam.play.yaw), cy = Math.cos(cam.play.yaw);
+  let mx = a.x * cy - a.y * sy, mz = -a.x * sy - a.y * cy;               // relatif arah kamera
+  const mag = Math.hypot(a.x, a.y);
+  chop.cd -= dt;
+  if ((input.act || keys.KeyE) && !chop.active) { chop.active = true; chop.t = 0; chop.hit = false;
+    const i = findTree(3.6); if (i >= 0) player.yaw = Math.atan2(treeData[i].x - player.x, treeData[i].z - player.z); }
+  const speed = chop.active ? 1.2 : 6.5;
+  const px = player.x, pz = player.z, dx = mx * speed * dt, dz = mz * speed * dt;
+  const blocked = (nx, nz) => terrainOrPadY(nx, nz) > player.y && groundNormal(nx, nz, _n).y < .45;
+  if (mag > 0) {
+    if (!blocked(px + dx, pz + dz)) { player.x += dx; player.z += dz; }
+    else if (!blocked(px + dx, pz)) player.x += dx;
+    else if (!blocked(px, pz + dz)) player.z += dz;
+    if (!chop.active) { let da = Math.atan2(mx, mz) - player.yaw; da = Math.atan2(Math.sin(da), Math.cos(da)); player.yaw += da * Math.min(1, 14 * dt); }
+  }
+  obResolve(player, .4);
+  const lim = T_HALF - 10; player.x = clamp(player.x, -lim, lim); player.z = clamp(player.z, -lim, lim);
+  // vertikal
+  if (input.jump || keys.Space) { if (player.grounded) { player.vy = 9.5; player.grounded = false; } }
+  const gy = surfaceY(player.x, player.z);
+  player.vy -= 26 * dt; player.y += player.vy * dt;
+  if (player.y <= gy || (player.grounded && player.vy <= 0 && player.y - gy < .4)) { player.y = gy; player.vy = 0; player.grounded = true; } else player.grounded = false;
+
+  // animasi
+  const moving = mag > 0 && !chop.active;
+  player.walkPh += dt * 10 * (moving ? mag : 0);
+  const sw = moving ? Math.sin(player.walkPh) * .8 : 0;
+  legL.rotation.x = sw; legR.rotation.x = -sw; armL.rotation.x = -sw * .9; armR.rotation.x = chop.active ? armR.rotation.x : sw * .9 - .2;
+  if (!player.grounded) { armL.rotation.x = -2.6; armR.rotation.x = -2.6; legL.rotation.x = .4; legR.rotation.x = -.4; }   // pose lompat
+  if (chop.active) {
+    chop.t += dt / .5; const t = chop.t;
+    armR.rotation.x = t < .4 ? -(t / .4) * 2.6 : t < .6 ? -(2.6 - (t - .4) / .2 * 1.2) : -(1.4 - Math.min(1, (t - .6) / .4) * 1.2);
+    torso.rotation.y = 0;
+    if (!chop.hit && t >= .55) { chop.hit = true; applyChopHit(); }
+    if (t >= 1) chop.active = false;
+  }
+  player.root.position.set(player.x, player.y, player.z); model.rotation.y = player.yaw;
+  playerBlob.position.set(player.x, gy + .05, player.z);
+}
+function terrainOrPadY(x, z) { return surfaceY(x, z); }
+
+/* ---------- Kamera ---------- */
+const camTgt = new THREE.Vector3();
+function orbitCam(tgt, c) {
+  const cp = Math.cos(c.pitch);
+  let x = tgt.x + Math.sin(c.yaw) * cp * c.dist, y = tgt.y + Math.sin(c.pitch) * c.dist, z = tgt.z + Math.cos(c.yaw) * cp * c.dist;
+  const gy = surfaceY(x, z) + 1; if (y < gy) y = gy;
+  camera.position.set(x, y, z); camera.lookAt(tgt);
+}
+function updateCamera(dt) {
+  if (mode === 'play') orbitCam(camTgt.set(player.x, player.y + 1.7, player.z), cam.play);
+  else if (mode === 'build') orbitCam(camTgt.set(SITE.x, SITE.y + 1.5, SITE.z), cam.build);
+  else {                                         // chase cam di belakang kendaraan
+    _f.set(0, 0, -1).applyQuaternion(veh.quat); veh.camF.lerp(_f, 1 - Math.exp(-3 * dt)).normalize();
+    const c = cam.drive; if (!pointers.size) { c.yaw *= Math.exp(-2 * dt); c.pitch *= Math.exp(-2 * dt); }
+    _t1.copy(veh.camF).multiplyScalar(-c.dist); _t1.applyAxisAngle(Y_AXIS, c.yaw); _t1.y += c.dist * (.3 + c.pitch * .6);
+    camera.position.copy(veh.pos).add(_t1);
+    const gy = surfaceY(camera.position.x, camera.position.z) + 1.2; if (camera.position.y < gy) camera.position.y = gy;
+    camera.lookAt(_t2.copy(veh.pos).addScaledVector(veh.camF, 5));
+  }
+  if (shake > 0.01) { camera.position.x += (Math.random() - .5) * shake * 1.2; camera.position.y += (Math.random() - .5) * shake * 1.2; shake *= Math.exp(-6 * dt); }
+}
+
+/* ---------- Game loop ---------- */
+let last = performance.now(), fAcc = 0, fN = 0;
+function update(dt) {
+  time += dt;
+  for (const c of clouds) { c.position.x += dt * 2; if (c.position.x > 220) c.position.x = -220; }
+  if (mode === 'play') updatePlayer(dt);
+  if (veh.sim) {                                  // 2 sub-step agar tidak tembus tanah saat cepat
+    const h = dt / 2; stepVehicle(h, mode === 'drive'); stepVehicle(h, mode === 'drive'); applyVehicleTransform();
+    vehBlob.visible = true; const gy = surfaceY(veh.pos.x, veh.pos.z); vehBlob.position.set(veh.pos.x, gy + .06, veh.pos.z);
+    vehBlob.scale.setScalar(clamp(3 - (veh.pos.y - gy) * .04, 1, 3));
+  } else vehBlob.visible = false;
+  if (mode === 'drive') {
+    $('flightHud').textContent = `SPD ${(veh.vel.length() * 3.6) | 0} km/h  •  ALT ${Math.max(0, veh.pos.y - surfaceY(veh.pos.x, veh.pos.z)) | 0} m  •  🔥 ${veh.stats.thr}  🪽 ${veh.stats.wings}`;
+  }
+  // animasi pohon (tumbang / getar)
+  if (animTrees.size) {
+    for (const i of animTrees) {
+      const t = treeData[i];
+      if (t.state === 1) { t.t += dt; if (t.t >= .95) { t.state = 2; animTrees.delete(i); } }
+      else { t.shake -= dt; if (t.shake <= 0) { t.shake = 0; animTrees.delete(i); } }
+      writeTree(i);
+    }
+    markTrees();
+  }
+  fireFX.update(dt); dustFX.update(dt);
+  updateCamera(dt);
+  // Visibilitas tombol Craft berdasarkan lokasi area crafting
+  const nearCraftArea = Math.hypot(player.x - SITE.x, player.z - SITE.z) <= 8.5;
+  if (mode === 'play') {
+    $('btnCraft').style.display = nearCraftArea ? 'flex' : 'none';
+    $('btnCraft').classList.toggle('near', nearCraftArea);
+  } else if (mode === 'build') {
+    $('btnCraft').style.display = 'flex';
+    $('btnCraft').classList.remove('near');
+  } else {
+    $('btnCraft').style.display = 'none';
+  }
+  // tanda "dekat kendaraan"
+  $('btnAct').classList.toggle('near', mode === 'play' && veh.sim && Math.hypot(player.x - veh.pos.x, player.z - veh.pos.z) < 9);
+}
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (fpsLimit > 0) {
+    const minDelta = (1000 / fpsLimit) - 1.5; // toleransi jitter timer rAF
+    if (now - last < minDelta) return;
+  }
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  update(dt); renderer.render(scene, camera);
+  fAcc += dt; fN++; if (fAcc >= .5) { $('fps').textContent = 'FPS: ' + Math.round(fN / fAcc); fAcc = 0; fN = 0; }
+}
+
+// Inisialisasi: kendaraan kosong siap, pemain di dekat pad
+updateStats(); prepareVehicle(); veh.sim = false;
+vehGroup.position.set(SITE.x, SITE.y, SITE.z); partRoot.position.set(0, 0, 0);
+toast('Tebang pohon 🪓 lalu tekan Craft 🔨 untuk merakit roket!');
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
