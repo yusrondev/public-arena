@@ -409,7 +409,7 @@ const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t 
 
 const T_SIZE = 1800, T_N = 200, T_D = T_SIZE / T_N, T_HALF = T_SIZE / 2, T_W = T_N + 1;
 const SITE = { x: 0, y: 0.2, z: 14 };            // lokasi area rakit (pad)
-const PAD_HALF = 4.7;
+const PAD_HALF = 120; // Luas area crafting bebas tanpa batasan sempit
 const hGrid = new Float32Array(T_W * T_W);
 
 function genHeight(ix, iz) {
@@ -481,12 +481,10 @@ function terrainColor(cy, ny, r) {
   scene.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true })));
 })();
 
-// Area rakit langsung di atas dataran (tanpa papan fisik; pad hanya proxy tak terlihat untuk raycast tap)
+// Area rakit langsung di atas dataran (tanpa papan fisik & tanpa garis grid visual; pad proxy tak terlihat untuk raycast tap)
 const padMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
 const pad = new THREE.Mesh(new THREE.BoxGeometry(PAD_HALF * 2, .4, PAD_HALF * 2), padMat);
 pad.position.set(SITE.x, SITE.y - 0.2, SITE.z); pad.visible = false; scene.add(pad);
-const grid = new THREE.GridHelper(9, 9, 0x00f0ff, 0x38bdf8);
-grid.position.set(SITE.x, SITE.y + .04, SITE.z); grid.visible = false; scene.add(grid);
 
 // Marker suar cahaya ke langit dan papan crafting telah dihapus sepenuhnya (crafting langsung di tanah)
 
@@ -997,9 +995,40 @@ const head = boxMesh(.56, .56, .56, 0xf0c49a); head.position.y = 1.98; model.add
 const armL = pivot(model, -.56, 1.65, 0), armR = pivot(model, .56, 1.65, 0);
 [armL, armR].forEach(p => { const m = boxMesh(.26, .8, .3, 0xf0c49a); m.position.y = -.35; p.add(m);
   const s = boxMesh(.28, .3, .32, 0xd8483d); s.position.y = -.05; p.add(s); });
-{ // kapak di tangan kanan
-  const h = boxMesh(.07, .6, .07, 0x6b4a26); h.position.set(0, -.95, .08); armR.add(h);
-  const hd = boxMesh(.07, .22, .34, 0xb9c0c8); hd.position.set(0, -1.18, .22); armR.add(hd); }
+{ // Kapak di tangan kanan (digenggam di tangan, condong ke depan, kepala kapak di atas, bilah tajam menghadap ke depan)
+  const axe = new THREE.Group();
+  axe.position.set(0, -.66, .08);
+  axe.rotation.x = 0.72; // Condong ~41 derajat ke DEPAN (+Z), keluar dari tangan ke udara bebas
+
+  // Gagang kayu: Hand grip di genggaman tangan (y = 0), memanjang ke atas-depan
+  const h = boxMesh(.065, .65, .065, 0x6b4a26);
+  h.position.set(0, .15, 0);
+  axe.add(h);
+
+  // Ujung bawah gagang (pommel knob)
+  const pommel = boxMesh(.085, .05, .085, 0x4a3016);
+  pommel.position.set(0, -.18, 0);
+  axe.add(pommel);
+
+  // Kepala kapak baja: Berada di ujung ATAS gagang (y = 0.40)
+  const hdCollar = boxMesh(.085, .15, .12, 0x606870); // cincin pengikat gagang
+  hdCollar.position.set(0, .40, .02);
+  axe.add(hdCollar);
+
+  const hdBlade = boxMesh(.048, .26, .20, 0xd0d8e2); // bilah kapak baja menghadap ke depan (+Z)
+  hdBlade.position.set(0, .40, .15);
+  axe.add(hdBlade);
+
+  const hdEdge = boxMesh(.032, .28, .06, 0xf0f5fa);  // mata bilah tajam perak berkilau di ujung depan
+  hdEdge.position.set(0, .40, .24);
+  axe.add(hdEdge);
+
+  const hdPoll = boxMesh(.08, .12, .10, 0x4d555e);   // bagian tumpul palu belakang kapak (-Z)
+  hdPoll.position.set(0, .40, -.09);
+  axe.add(hdPoll);
+
+  armR.add(axe);
+}
 scene.add(player.root);
 
 // Parasut 3D untuk terjun payung saat keluar dari pesawat di udara
@@ -1046,13 +1075,15 @@ const chop = { active: false, t: 0, hit: false, cd: 0 };
 /* ------------------------------------------------------------------ *
  * 6. PARTICLE SYSTEM (pool Points, tanpa alokasi per frame)
  * ------------------------------------------------------------------ */
-function makePS(N, size, additive) {
+function makePS(N, size, additive, map) {
   const pos = new Float32Array(N * 3).fill(-9999), col = new Float32Array(N * 3), vel = new Float32Array(N * 3);
   const life = new Float32Array(N), mx = new Float32Array(N).fill(1), c0 = new Float32Array(N * 3), c1 = new Float32Array(N * 3), gr = new Float32Array(N);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size, vertexColors: true, transparent: additive, depthWrite: false,
-    blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending }));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+    size, map: map || null, vertexColors: true, transparent: true, depthWrite: false,
+    blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending
+  }));
   pts.frustumCulled = false; scene.add(pts);
   let head = 0, dirty = false;
   return {
@@ -1077,8 +1108,22 @@ function makePS(N, size, additive) {
     }
   };
 }
-const fireFX = makePS(260, 1.25, true);    // api roket ramping realistis (gradasi terang -> merah matang)
-const dustFX = makePS(220, .8, false);    // debu, serpihan, daun
+
+// Tekstur bulat berpijar suhu tinggi untuk api semburan roket realistis
+const flameCanvas = document.createElement('canvas');
+flameCanvas.width = flameCanvas.height = 64;
+const fctx = flameCanvas.getContext('2d');
+const fgrd = fctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+fgrd.addColorStop(0, 'rgba(255, 255, 255, 1.0)');     // Inti plasma ultra terang
+fgrd.addColorStop(0.20, 'rgba(255, 248, 190, 0.95)'); // Emas pijar bersuhu tinggi
+fgrd.addColorStop(0.45, 'rgba(255, 128, 24, 0.78)');  // Api oranye pekat
+fgrd.addColorStop(0.72, 'rgba(220, 38, 6, 0.35)');    // Ekor merah matang
+fgrd.addColorStop(1.0, 'rgba(180, 10, 0, 0)');        // Transparan lembut
+fctx.fillStyle = fgrd; fctx.fillRect(0, 0, 64, 64);
+const flameTex = new THREE.CanvasTexture(flameCanvas);
+
+const fireFX = makePS(450, 2.0, true, flameTex);    // api roket volumetrik bergradasi realistis
+const dustFX = makePS(220, .8, false);               // debu, serpihan, daun, percikan spark
 
 // Tekstur bulat lembut untuk asap membekas
 const smokeCanvas = document.createElement('canvas');
@@ -1142,6 +1187,8 @@ function burst(x, y, z, n, a, b, speed, up, life) {
  * 7. MODE BUILD  (grid snap 1 unit, raycast ke proxy per-sel)
  * ------------------------------------------------------------------ */
 const vehGroup = new THREE.Group(); scene.add(vehGroup);
+const plumeGroup = new THREE.Group(); vehGroup.add(plumeGroup); plumeGroup.visible = false;
+const rocketLight = new THREE.PointLight(0xff6818, 0, 28, 1.8); scene.add(rocketLight);
 const partRoot = new THREE.Group(); vehGroup.add(partRoot);   // berisi part dalam koordinat build; digeser ke pusat massa saat terbang
 vehGroup.position.set(SITE.x, SITE.y, SITE.z);
 const parts = new Map();          // key "i,j,k" -> {type,i,j,k,mesh,proxy}
@@ -1157,8 +1204,20 @@ const G = {
   gunBarrel: flat(new THREE.CylinderGeometry(0.08, 0.08, 0.95, 8).rotateX(Math.PI / 2)),
   gunTip: flat(new THREE.CylinderGeometry(0.12, 0.09, 0.18, 8).rotateX(Math.PI / 2)),
   gunCore: new THREE.BoxGeometry(0.24, 0.24, 0.35),
-  proxy: new THREE.BoxGeometry(1, 1, 1)
+  proxy: new THREE.BoxGeometry(1, 1, 1),
+  plumeOuter: flat(new THREE.CylinderGeometry(0.04, 0.28, 2.4, 8, 1, true).rotateX(Math.PI / 2).translate(0, 0, 1.2)),
+  plumeCore: flat(new THREE.CylinderGeometry(0.012, 0.14, 1.3, 8, 1, true).rotateX(Math.PI / 2).translate(0, 0, 0.65)),
+  plumeDiamond: flat(new THREE.OctahedronGeometry(0.12, 0).scale(1, 1, 1.5))
 };
+const flamePlumeMat = new THREE.MeshBasicMaterial({
+  color: 0xff4800, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false
+});
+const flameCoreMat = new THREE.MeshBasicMaterial({
+  color: 0xfff6cf, transparent: true, opacity: 0.92, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false
+});
+const machDiamondMat = new THREE.MeshBasicMaterial({
+  color: 0xffeedd, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false
+});
 const proxyMat = new THREE.MeshBasicMaterial({ visible: false });
 function makePartMesh(type) {
   const g = new THREE.Group();
@@ -1232,54 +1291,66 @@ function removePart(key, refund) {
 }
 function clearParts(refund) { for (const k of [...parts.keys()]) removePart(k, refund); }
 
-// Statistik kendaraan dengan Center of Mass & Momen Aerodinamis Sayap
+// Statistik kendaraan dengan Center of Mass & Momen Aerodinamis Sayap Sejati (Relatif terhadap CoM)
 function computeStats() {
   let blocks = 0, wings = 0, thr = 0, guns = 0;
-  let sumMass = 1.2; // massa dasar kursi/kokpit di (0, 0.5, 0)
-  let sumMx = 0, sumMy = 0.6, sumMz = 0;
-  let wingsL = 0, wingsR = 0;
-  let wingLiftX = 0, wingLiftZ = 0;
-  let thrX = 0, thrY = 0;
+  let sumMass = 0;
+  let sumMx = 0, sumMy = 0, sumMz = 0;
 
   parts.forEach(p => {
-    let m = 1.0;
-    if (p.type === 'wing') { wings++; m = 0.45; }
-    else if (p.type === 'thruster') { thr++; m = 0.85; }
-    else if (p.type === 'gun') { guns++; m = 0.75; }
-    else { blocks++; m = 1.0; }
+    let m = 0.80;
+    if (p.type === 'wing') { wings++; m = 0.22; }        // Sayap aerodinamis ringan & stabil
+    else if (p.type === 'thruster') { thr++; m = 0.38; }  // Roket pendorong ringan
+    else if (p.type === 'gun') { guns++; m = 0.45; }      // Senjata tembak seimbang
+    else { blocks++; m = 0.80; }
 
     sumMass += m;
     const py = p.j + 0.5;
     sumMx += m * p.i;
     sumMy += m * py;
     sumMz += m * p.k;
-
-    if (p.type === 'wing') {
-      if (p.i < 0) wingsL++;
-      else if (p.i > 0) wingsR++;
-      // Lengan momen lateral sayap: sayap makin jauh dari sumbu tengah memberi momen angkat lebih besar
-      wingLiftX += p.i;
-      wingLiftZ += p.k;
-    }
-    if (p.type === 'thruster') {
-      thrX += p.i;
-      thrY += (py - 0.5);
-    }
   });
 
-  const mass = sumMass;
-  const comX = sumMx / mass;
-  const comY = sumMy / mass;
-  const comZ = sumMz / mass;
+  // Jika belum ada part, default ke titik tengah grid (0, 0.5, 0)
+  const partsMass = sumMass || 1.2;
+  const comX = parts.size ? (sumMx / sumMass) : 0;
+  const comY = parts.size ? (sumMy / sumMass) : 0.5;
+  const comZ = parts.size ? (sumMz / sumMass) : 0;
+  const mass = partsMass + 0.8; // Massa pilot bertumpu di pusat massa kendaraan
+
+  // Hitung momen ketidakseimbangan RELATIF terhadap Center of Mass (CoM) kendaraan itu sendiri!
+  // Ini memastikan pesawat yang simetris akan selalu seimbang 100%, di manapun posisi dibuatnya di grid.
+  let wingsL = 0, wingsR = 0;
+  let wingLiftX = 0, wingLiftZ = 0;
+  let thrX = 0, thrY = 0;
+
+  parts.forEach(p => {
+    const relX = p.i - comX;
+    const relY = (p.j + 0.5) - comY;
+    const relZ = p.k - comZ;
+
+    if (p.type === 'wing') {
+      if (relX < -0.1) wingsL++;
+      else if (relX > 0.1) wingsR++;
+      // Lengan momen lateral sayap relatif terhadap sumbu CoM pesawat
+      wingLiftX += relX;
+      wingLiftZ += relZ;
+    }
+    if (p.type === 'thruster') {
+      // Posisi nosel pendorong relatif terhadap sumbu CoM pesawat
+      thrX += relX;
+      thrY += relY;
+    }
+  });
 
   return {
     blocks, wings, thr, guns, mass, count: parts.size,
     comX, comY, comZ,
     wingsL, wingsR,
     wingImbalanceX: wingLiftX,
-    massImbalanceX: comX,
+    massImbalanceX: 0, // Pivot pesawat sudah berada tepat di CoM, sehingga torsi gravitasi = 0
     wingImbalanceZ: wingLiftZ,
-    massImbalanceZ: comZ,
+    massImbalanceZ: 0,
     thrX, thrY
   };
 }
@@ -1298,7 +1369,8 @@ function pickCell(cx, cy) {
   if (state.tool === 'del') return h.object.userData.key ? { key: h.object.userData.key, ...parts.get(h.object.userData.key) } : null;
   const lx = h.point.x + n.x * .5 - SITE.x, ly = h.point.y + n.y * .5 - SITE.y, lz = h.point.z + n.z * .5 - SITE.z;
   const i = Math.floor(lx + .5), j = Math.floor(ly), k = Math.floor(lz + .5);
-  if (Math.abs(i) > 4 || Math.abs(k) > 4 || j < 0 || j > 7) return null;
+  // Bebas rakit tanpa batasan area/ukuran sempit (hanya cegah j < 0 agar tidak tembus ke bawah tanah)
+  if (j < 0 || j > 80 || Math.abs(i) > 100 || Math.abs(k) > 100) return null;
   return { i, j, k };
 }
 function updateGhost(cx, cy) {
@@ -1478,7 +1550,7 @@ $('presetPopup').addEventListener('pointerdown', e => { if (e.target === $('pres
 /* ------------------------------------------------------------------ *
  * 8. FISIKA KENDARAAN (gravitasi, drag, lift sayap, thrust roket)
  * ------------------------------------------------------------------ */
-const PHYS = { GRAV: 9.0, THRUST: 22, CL: .045, MAXLIFT_G: 2.2 };
+const PHYS = { GRAV: 9.0, THRUST: 24, CL: .085, MAXLIFT_G: 3.0 };
 const veh = {
   pos: new THREE.Vector3(), quat: new THREE.Quaternion(), vel: new THREE.Vector3(), c: new THREE.Vector3(),
   stats: computeStats(), corners: [], thrusters: [], guns: [], shootCd: 0, rad: 1.6,
@@ -1626,6 +1698,23 @@ function prepareVehicle() {
   veh.thrusters.length = 0;
   parts.forEach(p => { if (p.type === 'thruster') veh.thrusters.push(new THREE.Vector3(p.i, p.j + .5, p.k).sub(veh.c).add(_t1.set(0, 0, .6))); });
 
+  // Buat supersonic shock plume 3D untuk setiap nosel pendorong roket
+  if (typeof plumeGroup !== 'undefined') {
+    while (plumeGroup.children.length > 0) plumeGroup.remove(plumeGroup.children[plumeGroup.children.length - 1]);
+    for (const t of veh.thrusters) {
+      const tg = new THREE.Group();
+      tg.position.copy(t);
+      const outerMesh = new THREE.Mesh(G.plumeOuter, flamePlumeMat);
+      const coreMesh = new THREE.Mesh(G.plumeCore, flameCoreMat);
+      const d1 = new THREE.Mesh(G.plumeDiamond, machDiamondMat); d1.position.z = 0.50;
+      const d2 = new THREE.Mesh(G.plumeDiamond, machDiamondMat); d2.position.z = 1.05; d2.scale.setScalar(0.72);
+      const d3 = new THREE.Mesh(G.plumeDiamond, machDiamondMat); d3.position.z = 1.55; d3.scale.setScalar(0.48);
+      tg.add(outerMesh, coreMesh, d1, d2, d3);
+      plumeGroup.add(tg);
+    }
+    plumeGroup.visible = false;
+  }
+
   veh.guns.length = 0;
   parts.forEach(p => {
     if (p.type === 'gun') {
@@ -1635,7 +1724,8 @@ function prepareVehicle() {
   veh.shootCd = 0;
   if ($('btnShoot')) $('btnShoot').style.display = (mode === 'drive' && veh.guns.length > 0) ? 'flex' : 'none';
 
-  veh.pos.set(SITE.x + veh.c.x, SITE.y + veh.c.y, SITE.z + veh.c.z);
+  const spawnGroundY = surfaceY(SITE.x + veh.c.x, SITE.z + veh.c.z);
+  veh.pos.set(SITE.x + veh.c.x, spawnGroundY + veh.c.y, SITE.z + veh.c.z);
   veh.quat.identity(); veh.vel.set(0, 0, 0); veh.camF.set(0, 0, -1); veh.sim = true; applyVehicleTransform();
 }
 function stepVehicle(dt, driving) {
@@ -1645,59 +1735,106 @@ function stepVehicle(dt, driving) {
     shootGuns();
   }
   _f.set(0, 0, -1).applyQuaternion(veh.quat); _u.set(0, 1, 0).applyQuaternion(veh.quat); _r.set(1, 0, 0).applyQuaternion(veh.quat);
-  const ax = driving ? getAxis() : { x: 0, y: 0 }, gas = driving && gasHeld() && st.thr > 0;
+
+  // JIKA PESAWAT SEDANG TIDAK DIKEMUDIKAN (PARKIR / BELUM DINAIKI):
+  // Harus diam stabil di atas tanah, tidak boleh berputar-putar sendiri, berguling, atau mengalami torsi liar!
+  if (!driving) {
+    if (typeof plumeGroup !== 'undefined') plumeGroup.visible = false;
+    if (typeof rocketLight !== 'undefined' && rocketLight.intensity > 0) rocketLight.intensity = Math.max(0, rocketLight.intensity - dt * 16);
+    const gy = surfaceY(veh.pos.x, veh.pos.z);
+    const groundLevel = gy + veh.c.y;
+    if (veh.pos.y <= groundLevel + 0.25 || veh.contact) {
+      // Parkir sempurna di atas tanah: Diam total dan stabil
+      veh.pos.y = groundLevel;
+      veh.vel.set(0, 0, 0);
+      veh.contact = true;
+      // Selaraskan kemiringan bodi mengikuti kontur tanah tanpa putaran liar
+      groundNormal(veh.pos.x, veh.pos.z, _n);
+      _t1.set(0, 1, 0).applyQuaternion(veh.quat);
+      if (_t1.dot(_n) < 0.999) {
+        _q2.setFromUnitVectors(_t1, _n);
+        veh.quat.premultiply(_q2).normalize();
+      }
+      return;
+    } else {
+      // Masih di udara (misal dijatuhkan dari langit saat lompat parasut): jatuh stabil ke tanah
+      veh.vel.y -= PHYS.GRAV * dt;
+      veh.vel.x *= Math.max(0, 1 - 2 * dt);
+      veh.vel.z *= Math.max(0, 1 - 2 * dt);
+      veh.pos.addScaledVector(veh.vel, dt);
+      return;
+    }
+  }
+
+  const ax = getAxis(), gas = gasHeld() && st.thr > 0;
   const speed = veh.vel.length(), vf = veh.vel.dot(f_());
   function f_() { return _f; }
   const auth = .35 + Math.min(1, speed / 14) * .65 + (st.wings > 0 ? .2 : 0);
   const wingsC = Math.min(st.wings, 10);
 
-  /* --- rotasi: input pemain + aerodinamika nyata + ketidakseimbangan sayap & bobot --- */
+  /* --- rotasi: input pemain + aerodinamika terkendali --- */
   let dPitch = -ax.y * 1.3 * auth * dt; // Inverted pitch: analog atas menukik turun, analog bawah mendongak naik
   let dRoll  = -ax.x * 2.0 * auth * dt;
   let dYaw   = -ax.x * .35 * auth * dt;
 
-  // 1. Torsi Roll Asimetris (Guling Kiri/Kanan):
-  // a) Bobot asimetris: sisi kanan yang lebih berat (massImbalanceX > 0) ditarik gravitasi bumi ke bawah -> DOYONG KE KANAN (dRoll bernilai negatif)
-  const gravRoll = -st.massImbalanceX * 1.8;
-  // b) Momen sayap: jika sayap kanan lebih banyak/panjang, drag & massa sayap juga menambah kecenderungan miring ke sisi dominan
-  const wingImbalanceRoll = -st.wingImbalanceX * 0.14 * clamp(vf / 15, 0, 1.8);
-  dRoll += (gravRoll + wingImbalanceRoll) * dt;
+  // 1. Torsi Roll Asimetris (Hanya berlaku saat di udara, bukan saat di tanah):
+  if (!veh.contact) {
+    const wingImbalanceRoll = -st.wingImbalanceX * 0.10 * clamp(vf / 15, 0, 1.5);
+    dRoll += wingImbalanceRoll * dt;
+  } else {
+    // Di tanah: redam roll secara stabil agar sayap tidak bergoyang miring
+    dRoll += -_r.y * 5.0 * dt;
+  }
 
-  // 2. Torsi Yaw Asimetris (Belok Kiri/Kanan):
-  // a) Hambatan sayap & beban: sisi yang lebih banyak beban/sayap memiliki drag lebih besar di udara, menarik hidung belok ke sisi itu (dYaw bernilai negatif untuk belok kanan)
-  const aeroYaw = -(st.wingImbalanceX * 0.14 + st.massImbalanceX * 0.22) * clamp(vf / 12, 0, 2.0);
-  // b) Thrust asimetris: roket di kanan mendorong hidung memutar ke kiri (dYaw bernilai positif)
-  const thrYaw = st.thrX * 0.35 * (gas ? 1 : 0);
-  dYaw += (aeroYaw + thrYaw) * dt;
+  // 2. Torsi Yaw Asimetris & Kemudi:
+  if (!veh.contact) {
+    const aeroYaw = -st.wingImbalanceX * 0.10 * clamp(vf / 12, 0, 1.6);
+    const thrYaw = st.thrX * 0.25 * (gas ? 1 : 0);
+    dYaw += (aeroYaw + thrYaw) * dt;
+  } else {
+    // Di tanah: kemudi roda saat bergerak
+    if (Math.abs(ax.x) > 0.1) {
+      dYaw += -ax.x * 1.8 * clamp(speed / 8, 0.4, 1.2) * dt;
+    }
+  }
 
-  // 3. Torsi Pitch Asimetris (Menukik / Mendongak):
-  // Beban di depan (massImbalanceZ < 0) membuat hidung menukik ke bawah (dPitch bernilai negatif)
-  const gravPitch = st.massImbalanceZ * 0.55;
-  // Sayap di belakang mengangkat ekor -> hidung menunduk (pitch down)
-  const aeroPitch = -st.wingImbalanceZ * 0.15 * clamp((vf * vf) / 70, 0, 2.0);
-  // Roket di bawah CoM mendorong hidung mendongak ke atas
-  const thrPitch = -st.thrY * 0.25 * (gas ? 1 : 0);
-  dPitch += (gravPitch + aeroPitch + thrPitch) * dt;
+  // 3. Torsi Pitch Asimetris (Di udara):
+  if (!veh.contact) {
+    const aeroPitch = -st.wingImbalanceZ * 0.02 * clamp((vf * vf) / 100, 0, 0.3);
+    const thrPitch = -st.thrY * 0.10 * (gas ? 1 : 0);
+    dPitch += (aeroPitch + thrPitch) * dt;
+  }
 
-  // 4. Stabilitas Sayap & Auto-Level:
-  // Jika pesawat asimetris, auto-level tidak boleh menetralkan ketidakseimbangan!
-  // Kekuatan auto-level berkurang drastis jika pesawat berat sebelah sehingga pemain merasakan langsung doyongnya.
-  const asymmetryFactor = clamp(Math.abs(st.wingImbalanceX) * 0.3 + Math.abs(st.massImbalanceX) * 0.7, 0, 0.95);
+  // 4. Stabilitas Sayap & Auto-Level (Roll & Pitch):
+  const asymmetryFactor = clamp(Math.abs(st.wingImbalanceX) * 0.25 + Math.abs(st.thrX) * 0.35, 0, 0.90);
   const autoLevelPower = Math.max(0.05, 1.0 - asymmetryFactor);
 
   if (Math.abs(ax.x) < .1) {
-    dRoll += -_r.y * (.25 + wingsC * .1) * 2 * autoLevelPower * dt;
+    dRoll += -_r.y * (.35 + wingsC * .15) * 2 * autoLevelPower * dt;
   }
 
-  if (speed > 4) {
+  // AUTO-LEVEL PITCH: Mengembalikan hidung pesawat ke posisi terbang horizontal alami saat joystick dilepas
+  if (Math.abs(ax.y) < .1 && st.wings > 0) {
+    dPitch += -_f.y * (0.8 + wingsC * 0.2) * autoLevelPower * dt;
+  }
+
+  if (!veh.contact && speed > 4 && st.wings > 0) {
     const aoa = Math.atan2(veh.vel.dot(_u), vf), beta = Math.atan2(veh.vel.dot(_r), vf);
     const k = clamp(speed / 15, 0, 1);
-    dPitch += aoa * wingsC * .25 * k * dt;
+    const safeAoA = clamp(aoa, -0.15, 0.2);
+    dPitch += safeAoA * wingsC * .12 * k * dt;
     dYaw += -beta * wingsC * .2 * k * dt;
   }
-  if (st.wings === 0 && st.count > 0) dPitch -= .3 * dt;                              // tanpa sayap: hidung jatuh
-  const worldYaw = _r.y * 1.1 * clamp(speed / 12, 0, 1) * (st.wings > 0 ? 1 : .4) * dt; // belok dari bank
-  if (veh.contact && Math.abs(ax.y) < .1) dPitch += -_f.y * 3 * dt;                    // ratakan di tanah
+  if (!veh.contact && st.wings === 0 && st.count > 0) dPitch -= .3 * dt; // tanpa sayap: hidung jatuh
+
+  // Bank-to-turn aerodinamis HANYA aktif saat pesawat benar-benar terbang di udara (BUKAN di tanah!)
+  const worldYaw = (!veh.contact && speed > 4) ? _r.y * 1.1 * clamp(speed / 12, 0, 1) * (st.wings > 0 ? 1 : .4) * dt : 0;
+
+  // Anti-terjungkal saat menyentuh tanah: angkat hidung jika mengarah ke tanah saat melaju
+  if (veh.contact) {
+    if (_f.y < -0.02) dPitch += Math.max(1.8, -_f.y * 5.0) * dt;
+    else if (Math.abs(ax.y) < .1) dPitch += -_f.y * 3 * dt;
+  }
   _q2.setFromAxisAngle(X_AXIS, dPitch); veh.quat.multiply(_q2);
   _q2.setFromAxisAngle(Z_AXIS, dRoll); veh.quat.multiply(_q2);
   _q2.setFromAxisAngle(Y_AXIS, dYaw); veh.quat.multiply(_q2);
@@ -1827,26 +1964,73 @@ function stepVehicle(dt, driving) {
   if (Math.abs(veh.pos.z) > lim) { veh.pos.z = clamp(veh.pos.z, -lim, lim); veh.vel.z *= -.3; }
   if (veh.pos.y < -50) { veh.pos.set(SITE.x, SITE.y + 6, SITE.z); veh.vel.set(0, 0, 0); }
 
-  /* --- Efek Api Pendorong Roket: Ramping & Bergradasi (Terang di Nosel -> Merah Matang di Ekor) --- */
+  /* --- EFEK ROKET REALISTIS (3D Mach Shock Plumes + Partikel Volumetrik + Dynamic PointLight) --- */
   if (gas && veh.thrusters.length > 0) {
+    // Parameter getaran turbulensi dan panjang semburan dinamis
+    const pJitter = 0.96 + Math.sin(time * 65) * 0.05 + (Math.random() - 0.5) * 0.08;
+    const pStretch = 1.0 + Math.sin(time * 38) * 0.12 + Math.min(speed / 25, 0.45);
+
+    if (typeof plumeGroup !== 'undefined') {
+      plumeGroup.visible = true;
+
+      // 1. Animasi dinamis getaran turbulensi Mach shock cone & shock diamonds
+      flamePlumeMat.opacity = 0.62 + Math.sin(time * 50) * 0.10;
+      flameCoreMat.opacity = 0.90 + Math.sin(time * 70) * 0.08;
+      machDiamondMat.opacity = 0.84 + Math.sin(time * 85) * 0.12;
+
+      for (let j = 0; j < plumeGroup.children.length; j++) {
+        const tg = plumeGroup.children[j];
+        if (tg.children.length >= 5) {
+          tg.children[0].scale.set(pJitter, pJitter, pStretch);
+          tg.children[1].scale.set(pJitter * 0.95, pJitter * 0.95, pStretch * 0.92);
+          const dScale = 1.0 + Math.sin(time * 75 + j) * 0.18;
+          tg.children[2].scale.set(dScale, dScale, dScale);
+          tg.children[3].scale.set(dScale * 0.72, dScale * 0.72, dScale * 0.72);
+          tg.children[4].scale.set(dScale * 0.48, dScale * 0.48, dScale * 0.48);
+        }
+      }
+    }
+
+    // 2. Semburan partikel api volumetrik & asap yang sejalan sempurna dengan keluarnya api roket
     const maxT = Math.min(veh.thrusters.length, 6);
     for (let i = 0; i < maxT; i++) {
       const t = veh.thrusters[i];
+      // Posisi ujung nosel di koordinat dunia
       _t1.copy(t).applyQuaternion(veh.quat).add(veh.pos);
 
-      const spExhaust = 13 + Math.random() * 5;
+      // Sumbu arah semburan keluar dari nosel roket (ke arah belakang nosel: -_f)
+      const exX = -_f.x, exY = -_f.y, exZ = -_f.z;
+
+      // a. Partikel api (fireFX) mengalir di dalam dan sepanjang kerucut lidah api (0.4m hingga 2.2m di belakang nosel)
+      const fireDist = 0.4 + Math.random() * (1.8 * pStretch);
+      const firePosX = _t1.x + exX * fireDist + (Math.random() - .5) * 0.05;
+      const firePosY = _t1.y + exY * fireDist + (Math.random() - .5) * 0.05;
+      const firePosZ = _t1.z + exZ * fireDist + (Math.random() - .5) * 0.05;
+
+      // Kecepatan partikel api: Mewarisi kecepatan pesawat + dorongan relatif lurus keluar dari nosel (exX, exY, exZ)
+      // Ini menjamin pergerakan partikel api 100% konsisten, searah, dan sejalan dengan keluarnya api roket
+      const fireRelSp = 6.0 + Math.random() * 3.0;
       fireFX.emit(
-        _t1.x + (Math.random() - .5) * 0.08,
-        _t1.y + (Math.random() - .5) * 0.08,
-        _t1.z + (Math.random() - .5) * 0.08,
-        -_f.x * spExhaust + veh.vel.x * 0.25 + (Math.random() - .5) * 0.35,
-        -_f.y * spExhaust + veh.vel.y * 0.25 + (Math.random() - .5) * 0.35,
-        -_f.z * spExhaust + veh.vel.z * 0.25 + (Math.random() - .5) * 0.35,
-        0.20 + Math.random() * 0.10,
-        [1.0, 0.96, 0.65],  // Ujung nosel roket: api terang benderang
-        [0.78, 0.08, 0.02],  // Ekor semburan api: merah matang realistis
+        firePosX, firePosY, firePosZ,
+        veh.vel.x + exX * fireRelSp,
+        veh.vel.y + exY * fireRelSp,
+        veh.vel.z + exZ * fireRelSp,
+        0.18 + Math.random() * 0.08,
+        [1.0, 0.98, 0.85],  // Inti plasma putih-emas sangat panas
+        [0.85, 0.10, 0.01],  // Ekor merah matang membara
         0
       );
+    }
+
+    // 3. Dynamic Real-Time PointLight di belakang nosel menyinari badan pesawat & daratan
+    if (typeof rocketLight !== 'undefined') {
+      rocketLight.position.copy(veh.pos).addScaledVector(_f, -1.2);
+      rocketLight.intensity = 2.6 + Math.sin(time * 55) * 0.6 + (Math.random() - 0.5) * 0.4;
+    }
+  } else {
+    if (typeof plumeGroup !== 'undefined') plumeGroup.visible = false;
+    if (typeof rocketLight !== 'undefined' && rocketLight.intensity > 0) {
+      rocketLight.intensity = Math.max(0, rocketLight.intensity - dt * 16);
     }
   }
 }
@@ -1940,7 +2124,7 @@ function addModalTap(el, cb) {
 
 // Popup pengaturan: kualitas grafis + limit FPS + fullscreen
 const popup = $('settingsPopup');
-let fpsLimit = 60;
+let fpsLimit = 120;
 function refreshQualityUI() {
   document.querySelectorAll('.qbtn').forEach(b => {
     const act = +b.dataset.q === qIdx;
@@ -2019,7 +2203,7 @@ canvas.addEventListener('pointermove', e => {
   const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; p.moved += Math.abs(dx) + Math.abs(dy);
   const c = cam[mode];
   if (pointers.size === 1) { c.yaw -= dx * .006; c.pitch = clamp(c.pitch + dy * .005, -.5, 1.3); }
-  else if (pointers.size === 2) { const d = pinchDist(); if (pinch0 > 0) c.dist = clamp(c.dist * pinch0 / d, 4, mode === 'drive' ? 30 : 22); pinch0 = d; }
+  else if (pointers.size === 2) { const d = pinchDist(); if (pinch0 > 0) c.dist = clamp(c.dist * pinch0 / d, 4, mode === 'build' ? 48 : mode === 'drive' ? 30 : 22); pinch0 = d; }
 });
 function endPtr(e) {
   const p = pointers.get(e.pointerId); if (!p) return;
@@ -2027,7 +2211,7 @@ function endPtr(e) {
   pointers.delete(e.pointerId);
 }
 canvas.addEventListener('pointerup', endPtr); canvas.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
-canvas.addEventListener('wheel', e => { const c = cam[mode]; c.dist = clamp(c.dist + e.deltaY * .01, 4, 30); }, { passive: true });
+canvas.addEventListener('wheel', e => { const c = cam[mode]; c.dist = clamp(c.dist + e.deltaY * .01, 4, mode === 'build' ? 50 : 30); }, { passive: true });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 /* ---------- Mode switching & SVG Icons ---------- */
@@ -2041,6 +2225,10 @@ const SVG_ICONS = {
 };
 function setMode(m) {
   mode = m; document.body.dataset.mode = m;
+  if (m !== 'drive') {
+    if (typeof plumeGroup !== 'undefined') plumeGroup.visible = false;
+    if (typeof rocketLight !== 'undefined') rocketLight.intensity = 0;
+  }
   $('craftLbl').textContent = m === 'build' ? 'Selesai' : 'Craft';
   $('craftIco').innerHTML = m === 'build' ? SVG_ICONS.check : SVG_ICONS.hammer;
   $('chopIco').innerHTML = m === 'drive' ? SVG_ICONS.fire : SVG_ICONS.axe;
@@ -2053,23 +2241,33 @@ function setMode(m) {
 function toggleCraft() {
   if (player.parachute) return;
   if (mode === 'build') {                       // selesai merakit
-    grid.visible = false; ghost.visible = false; pad.visible = false;
+    ghost.visible = false; pad.visible = false;
     prepareVehicle();
     // posisikan pemain di samping kendaraan yang baru dirakit dengan aman
-    player.x = SITE.x + 4.8; player.z = SITE.z + 1.2; player.y = surfaceY(player.x, player.z); player.vy = 0;
+    if (parts.size > 0) {
+      const pSideOffset = (veh.rad || 2.0) + 1.6;
+      player.x = veh.pos.x + pSideOffset;
+      player.z = veh.pos.z;
+    } else {
+      player.x = SITE.x + 4.8;
+      player.z = SITE.z + 1.2;
+    }
+    player.y = surfaceY(player.x, player.z);
+    player.vy = 0;
     player.root.visible = true; playerBlob.visible = !shadowsOn;
     cam.play.yaw = 0; setMode('play');
     toast(parts.size ? 'Kendaraan siap! Dekati lalu tekan Interaksi 🚀' : 'Kendaraan masih kosong');
   } else {
     if (mode === 'drive') leaveVehicle();
+    if (typeof plumeGroup !== 'undefined') plumeGroup.visible = false;
+    if (typeof rocketLight !== 'undefined') rocketLight.intensity = 0;
     
-    // CRAFTING DIMANA SAJA: Pindahkan pusat SITE & Grid langsung ke lokasi dataran pemain saat ini!
+    // CRAFTING DIMANA SAJA: Pindahkan pusat SITE langsung ke lokasi dataran pemain saat ini!
     SITE.x = Math.round(player.x);
     SITE.z = Math.round(player.z);
     SITE.y = terrainY(SITE.x, SITE.z);
 
-    // Sinkronkan posisi grid tepat di dataran sekitar pemain & proxy penempatan part
-    grid.position.set(SITE.x, SITE.y + 0.04, SITE.z);
+    // Sinkronkan posisi proxy penempatan part bebas hambatan luas
     pad.position.set(SITE.x, SITE.y - 0.2, SITE.z);
     pad.visible = true;
 
@@ -2084,8 +2282,8 @@ function toggleCraft() {
 
     // Kendaraan dikembalikan ke posisi rakit baru untuk diedit
     veh.sim = false; partRoot.position.set(0, 0, 0); vehGroup.position.set(SITE.x, SITE.y, SITE.z); vehGroup.quaternion.identity();
-    grid.visible = true; setMode('build'); updateStats();
-    toast('🔨 Mode Craft aktif di lokasi ini! Rakit pesawatmu');
+    setMode('build'); updateStats();
+    toast('🔨 Mode Craft aktif! Bebas rakit tanpa batasan area');
   }
 }
 function interact() {
@@ -2098,6 +2296,8 @@ function interact() {
   toast(veh.stats.thr ? 'Tahan GAS 🔥 • Joystick: pitch/belok' : 'Kendaraan belum punya roket!');
 }
 function leaveVehicle() {
+  if (typeof plumeGroup !== 'undefined') plumeGroup.visible = false;
+  if (typeof rocketLight !== 'undefined') rocketLight.intensity = 0;
   _r.set(1, 0, 0).applyQuaternion(veh.quat); _r.y = 0; _r.normalize();
   player.x = veh.pos.x + _r.x * 2.5; player.z = veh.pos.z + _r.z * 2.5;
   const gy = surfaceY(player.x, player.z);
