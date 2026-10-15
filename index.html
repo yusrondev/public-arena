@@ -38,6 +38,15 @@
 
 <!-- ================= UI OVERLAY ================= -->
 <main id="ui" class="fixed inset-0 pointer-events-none">
+  <!-- Efek layar: glare matahari (transform/opacity saja => murah di GPU) & kilat petir -->
+  <div id="glareWash" class="absolute inset-0" style="opacity:0;mix-blend-mode:screen;background:radial-gradient(ellipse at center, rgba(255,244,214,.6), rgba(255,236,190,.3))"></div>
+  <div id="glare" class="absolute left-0 top-0 rounded-full" style="width:75vmax;height:75vmax;opacity:0;mix-blend-mode:screen;will-change:transform,opacity;background:radial-gradient(circle, rgba(255,253,240,.95) 0, rgba(255,242,200,.55) 5%, rgba(255,220,150,.2) 20%, rgba(255,200,120,0) 58%)"></div>
+  <div class="flare absolute left-0 top-0 rounded-full" data-t="-0.45" style="width:70px;height:70px;opacity:0;mix-blend-mode:screen;background:radial-gradient(circle, rgba(255,235,170,.55), rgba(255,210,130,0) 70%)"></div>
+  <div class="flare absolute left-0 top-0 rounded-full" data-t="0.25" style="width:40px;height:40px;opacity:0;mix-blend-mode:screen;background:radial-gradient(circle, rgba(170,255,200,.45), rgba(120,220,170,0) 70%)"></div>
+  <div class="flare absolute left-0 top-0 rounded-full" data-t="0.6" style="width:110px;height:110px;opacity:0;mix-blend-mode:screen;background:radial-gradient(circle, rgba(160,200,255,0) 45%, rgba(160,200,255,.35) 62%, rgba(160,200,255,0) 72%)"></div>
+  <div class="flare absolute left-0 top-0 rounded-full" data-t="1.1" style="width:55px;height:55px;opacity:0;mix-blend-mode:screen;background:radial-gradient(circle, rgba(255,170,120,.45), rgba(255,140,100,0) 70%)"></div>
+  <div id="flash" class="absolute inset-0 bg-white" style="opacity:0"></div>
+
   <h1 class="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded bg-slate-600/70 text-white text-xs sm:text-sm whitespace-nowrap">Low-Poly Physics Crafting Sandbox</h1>
 
   <!-- kanan atas: FPS + menu kualitas -->
@@ -64,8 +73,16 @@
       <button data-fps="60" class="fps-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">60</button>
       <button data-fps="120" class="fps-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">120</button>
     </div>
-    <div class="text-xs text-white/70 mb-1">Tampilan</div>
-    <button id="btnFullscreen" class="w-full py-2 rounded-lg bg-emerald-600/80 font-semibold">⛶ Fullscreen: Off</button>
+    <div class="text-xs text-white/70 mb-1">Cuaca</div>
+    <div class="flex gap-1.5 mb-3">
+      <button data-wx="auto" class="wx-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">Auto</button>
+      <button data-wx="clear" class="wx-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">☀️ Cerah</button>
+      <button data-wx="rain" class="wx-btn flex-1 py-1.5 rounded-lg bg-white/10 border-2 border-transparent">🌧️ Hujan</button>
+    </div>
+    <div class="text-xs text-white/70 mb-1">Tampilan & Suara</div>
+    <button id="btnFullscreen" class="w-full py-2 mb-1.5 rounded-lg bg-emerald-600/80 font-semibold">⛶ Fullscreen: Off</button>
+    <button id="btnSound" class="w-full py-2 rounded-lg bg-sky-600/80 font-semibold">🔊 Suara: On</button>
+    <div class="text-[10px] text-white/50 mt-2">Bayangan real-time hanya aktif di kualitas High.</div>
   </div>
 
   <!-- kiri atas: inventory + info build -->
@@ -135,8 +152,15 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 70, 240);               // sembunyikan batas render distance
 const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 280);
-scene.add(new THREE.HemisphereLight(0xe3f3ff, 0x6f9250, 0.95));
-const sun = new THREE.DirectionalLight(0xfff2d8, 0.75); sun.position.set(60, 100, 40); scene.add(sun);
+const hemi = new THREE.HemisphereLight(0xe3f3ff, 0x6f9250, 0.95); scene.add(hemi);
+// Arah matahari (dipakai untuk cahaya, posisi sprite matahari, dan bayangan)
+const SUN_DIR = new THREE.Vector3(0.5, 0.42, -0.76).normalize();
+const sun = new THREE.DirectionalLight(0xfff2d8, 0.75); sun.position.copy(SUN_DIR).multiplyScalar(100); scene.add(sun); scene.add(sun.target);
+// Konfigurasi shadow map (hanya dinyalakan saat kualitas HIGH)
+sun.shadow.mapSize.set(1024, 1024);
+{ const sc = sun.shadow.camera; sc.left = sc.bottom = -36; sc.right = sc.top = 36; sc.near = 1; sc.far = 220; sc.updateProjectionMatrix(); }
+sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.05;
+let onQualityChange = null;                            // diisi oleh modul lingkungan (bayangan)
 
 // Level kualitas (render scale). Default MED = pixel ratio maks 1.
 const QUALITY = [
@@ -149,6 +173,7 @@ function applyQuality() {
   renderer.setPixelRatio(QUALITY[qIdx].pr);
   renderer.setSize(innerWidth, innerHeight, false);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  if (onQualityChange) onQualityChange();
 }
 addEventListener('resize', applyQuality);
 applyQuality();
@@ -479,6 +504,7 @@ function addPart(type, i, j, k, silent) {
   const key = i + ',' + j + ',' + k; if (parts.has(key)) return false;
   if (type === 'block') { if (inv.wood < 1 && !silent) { toast('Kayu tidak cukup! Tebang pohon dulu 🌲'); return false; } if (!silent) setWood(inv.wood - 1); }
   const mesh = makePartMesh(type); mesh.position.set(i, j + .5, k); partRoot.add(mesh);
+  mesh.traverse(o => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });   // aktif hanya jika shadow map ON
   const proxy = new THREE.Mesh(G.proxy, proxyMat); proxy.position.copy(mesh.position); proxy.userData.key = key; partRoot.add(proxy); pickTargets.push(proxy);
   parts.set(key, { type, i, j, k, mesh, proxy }); updateStats(); return true;
 }
@@ -745,7 +771,7 @@ canvas.addEventListener('pointermove', e => {
   if (!p) { if (mode === 'build' && e.pointerType === 'mouse') updateGhost(e.clientX, e.clientY); return; }
   const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; p.moved += Math.abs(dx) + Math.abs(dy);
   const c = cam[mode];
-  if (pointers.size === 1) { c.yaw -= dx * .006; c.pitch = clamp(c.pitch + dy * .005, -.2, 1.3); }
+  if (pointers.size === 1) { c.yaw -= dx * .006; c.pitch = clamp(c.pitch + dy * .005, -.5, 1.3); }
   else if (pointers.size === 2) { const d = pinchDist(); if (pinch0 > 0) c.dist = clamp(c.dist * pinch0 / d, 4, mode === 'drive' ? 30 : 22); pinch0 = d; }
 });
 function endPtr(e) {
@@ -880,6 +906,209 @@ function updateCamera(dt) {
   if (shake > 0.01) { camera.position.x += (Math.random() - .5) * shake * 1.2; camera.position.y += (Math.random() - .5) * shake * 1.2; shake *= Math.exp(-6 * dt); }
 }
 
+/* ------------------------------------------------------------------ *
+ * 10. LINGKUNGAN DINAMIS
+ *     - Matahari (sprite glow prosedural) + lens glare DOM (murah)
+ *     - Bayangan real-time: HANYA kualitas HIGH
+ *     - Siklus cuaca: cerah <-> hujan (tetesan = garis/LineSegments)
+ *     - Petir (kilat + bolt bercabang) + suara WebAudio prosedural
+ * ------------------------------------------------------------------ */
+// --- Bayangan: tandai semua mesh Lambert (terrain, pohon, batu, pemain, pad) ---
+scene.traverse(o => { if (o.isMesh && o.material && o.material.isMeshLambertMaterial) o.castShadow = o.receiveShadow = true; });
+let shadowsOn = false;
+function applyShadows() {
+  const on = qIdx === 2;
+  if (on === shadowsOn) return;
+  shadowsOn = on; renderer.shadowMap.enabled = on; sun.castShadow = on;
+  scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });   // recompile shader dengan/tanpa shadow
+}
+onQualityChange = applyShadows; applyShadows();
+
+// --- Matahari: sprite glow dari canvas (tanpa asset eksternal) ---
+function makeGlowTex() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.13, 'rgba(255,253,236,1)'); gr.addColorStop(.2, 'rgba(255,238,175,.8)');
+  gr.addColorStop(.45, 'rgba(255,212,125,.22)'); gr.addColorStop(1, 'rgba(255,200,100,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c);
+}
+const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeGlowTex(), transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }));
+sunSprite.scale.setScalar(85); scene.add(sunSprite);
+
+const glareEl = $('glare'), washEl = $('glareWash'), flashEl = $('flash'), ghostEls = [...document.querySelectorAll('.flare')];
+const _sp = new THREE.Vector3(); let sunVis = 0;
+// Cek apakah matahari tertutup gunung/bukit: sampling terrain sepanjang sinar ke arah matahari
+function sunOccluded() {
+  const o = camera.position;
+  for (let d = 6; d < 230; d *= 1.3) {
+    const x = o.x + SUN_DIR.x * d, y = o.y + SUN_DIR.y * d, z = o.z + SUN_DIR.z * d;
+    if (Math.abs(x) > T_HALF || Math.abs(z) > T_HALF) break;
+    if (terrainY(x, z) > y) return true;
+  }
+  return false;
+}
+function updateSun(dt, clear) {
+  sunSprite.position.copy(camera.position).addScaledVector(SUN_DIR, 230);
+  sunSprite.material.opacity = clear;
+  _sp.copy(sunSprite.position).project(camera);
+  const onScreen = _sp.z < 1 && Math.abs(_sp.x) < 1.25 && Math.abs(_sp.y) < 1.25;
+  const target = onScreen && clear > .05 && !sunOccluded() ? clear : 0;
+  sunVis += (target - sunVis) * Math.min(1, dt * 8);
+  if (sunVis < .01) { if (glareEl.style.opacity !== '0') { glareEl.style.opacity = washEl.style.opacity = 0; ghostEls.forEach(e => e.style.opacity = 0); } return; }
+  const sx = (_sp.x * .5 + .5) * innerWidth, sy = (-_sp.y * .5 + .5) * innerHeight;
+  const center = 1 - Math.min(1, Math.hypot(_sp.x, _sp.y) / 1.4);          // makin ke tengah layar makin silau
+  glareEl.style.transform = `translate(${sx}px,${sy}px) translate(-50%,-50%)`;
+  glareEl.style.opacity = (sunVis * (.55 + center * .45)).toFixed(3);
+  washEl.style.opacity = (sunVis * center * center * .5).toFixed(3);
+  const cx = innerWidth / 2, cy = innerHeight / 2;
+  for (const e of ghostEls) {                                                // flare ghost di garis matahari -> tengah layar
+    const t = +e.dataset.t;
+    e.style.transform = `translate(${cx + (cx - sx) * t}px,${cy + (cy - sy) * t}px) translate(-50%,-50%)`;
+    e.style.opacity = (sunVis * center * .7).toFixed(3);
+  }
+}
+
+// --- Hujan: LineSegments (setiap tetes = 1 garis miring, bukan titik bulat) ---
+const RAIN_MAX = 1500, RAIN_COUNT = [450, 850, 1500], RAIN_B = 22, RAIN_H = 28, WIND_X = 3.2, WIND_Z = 1.4, DROP_LEN = 1.1;
+const rainPos = new Float32Array(RAIN_MAX * 6), rainSeed = new Float32Array(RAIN_MAX * 4);   // x,y,z,kecepatan
+for (let i = 0; i < RAIN_MAX; i++) {
+  rainSeed[i * 4] = (Math.random() * 2 - 1) * RAIN_B; rainSeed[i * 4 + 1] = Math.random() * RAIN_H;
+  rainSeed[i * 4 + 2] = (Math.random() * 2 - 1) * RAIN_B; rainSeed[i * 4 + 3] = 26 + Math.random() * 12;
+}
+const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rainMat = new THREE.LineBasicMaterial({ color: 0xc4d4e6, transparent: true, opacity: 0, depthWrite: false });
+const rain = new THREE.LineSegments(rainGeo, rainMat); rain.frustumCulled = false; rain.visible = false; scene.add(rain);
+function updateRain(dt, k, focus) {
+  rain.visible = k > .02; if (!rain.visible) return;
+  rainMat.opacity = .6 * k;
+  const n = Math.round(RAIN_COUNT[qIdx] * Math.min(1, k * 1.3)); rainGeo.setDrawRange(0, n * 2);
+  const c = camera.position, top = c.y + RAIN_H * .6, bot = top - RAIN_H;
+  for (let i = 0; i < n; i++) {
+    const s = i * 4, v = rainSeed[s + 3];
+    let x = rainSeed[s] + WIND_X * dt, y = rainSeed[s + 1] - v * dt, z = rainSeed[s + 2] + WIND_Z * dt;
+    // wrap di dalam kotak yang mengikuti kamera (world-space => ada parallax saat bergerak)
+    if (x - c.x > RAIN_B) x -= RAIN_B * 2; else if (x - c.x < -RAIN_B) x += RAIN_B * 2;
+    if (z - c.z > RAIN_B) z -= RAIN_B * 2; else if (z - c.z < -RAIN_B) z += RAIN_B * 2;
+    if (y < bot) y += RAIN_H; else if (y > top) y -= RAIN_H;
+    rainSeed[s] = x; rainSeed[s + 1] = y; rainSeed[s + 2] = z;
+    const p = i * 6, f = DROP_LEN / v;                                         // ekor garis searah vektor kecepatan
+    rainPos[p] = x; rainPos[p + 1] = y; rainPos[p + 2] = z;
+    rainPos[p + 3] = x - WIND_X * f; rainPos[p + 4] = y + DROP_LEN; rainPos[p + 5] = z - WIND_Z * f;
+  }
+  rainGeo.attributes.position.needsUpdate = true;
+}
+
+// --- Petir: bolt bercabang (LineSegments) + kilatan cahaya ---
+const BOLT_MAX = 64, boltPos = new Float32Array(BOLT_MAX * 6);
+const boltGeo = new THREE.BufferGeometry(); boltGeo.setAttribute('position', new THREE.BufferAttribute(boltPos, 3));
+const bolt = new THREE.LineSegments(boltGeo, new THREE.LineBasicMaterial({ color: 0xf2f6ff, fog: false }));
+bolt.frustumCulled = false; bolt.visible = false; scene.add(bolt);
+function buildBolt(x, z) {
+  let n = 0;
+  const seg = (ax, ay, az, bx, by, bz) => { if (n < BOLT_MAX) { boltPos.set([ax, ay, az, bx, by, bz], n * 6); n++; } };
+  const gy = terrainY(x, z), steps = 14, sx = x + (Math.random() - .5) * 30, sz = z + (Math.random() - .5) * 30, sy = gy + 130;
+  let px = sx, py = sy, pz = sz;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps, j = i === steps ? 0 : 5;
+    const nx = sx + (x - sx) * t + (Math.random() - .5) * j, ny = sy + (gy - sy) * t, nz = sz + (z - sz) * t + (Math.random() - .5) * j;
+    seg(px, py, pz, nx, ny, nz); seg(px + .3, py, pz, nx + .3, ny, nz);       // garis ganda => terlihat lebih tebal
+    if (i < steps - 2 && Math.random() < .35) {                               // cabang
+      let bx = nx, by = ny, bz = nz; const dx = (Math.random() - .5) * 2, dz = (Math.random() - .5) * 2;
+      for (let b = 0; b < 3; b++) { const cx = bx + dx * 5 + (Math.random() - .5) * 3, cy = by - 6, cz = bz + dz * 5 + (Math.random() - .5) * 3; seg(bx, by, bz, cx, cy, cz); bx = cx; by = cy; bz = cz; }
+    }
+    px = nx; py = ny; pz = nz;
+  }
+  boltGeo.setDrawRange(0, n * 2); boltGeo.attributes.position.needsUpdate = true;
+}
+
+// --- Audio prosedural (hujan = noise ber-filter, guntur = noise low-pass) ---
+const sfx = { ctx: null, on: true, rainGain: null, noise: null, last: -1 };
+function initAudio() {
+  if (sfx.ctx) { if (sfx.ctx.state === 'suspended') sfx.ctx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  const ctx = sfx.ctx = new AC(), len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  sfx.noise = buf;
+  const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 800;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5500;
+  sfx.rainGain = ctx.createGain(); sfx.rainGain.gain.value = 0;
+  src.connect(hp); hp.connect(lp); lp.connect(sfx.rainGain); sfx.rainGain.connect(ctx.destination); src.start();
+}
+addEventListener('pointerdown', initAudio); addEventListener('keydown', initAudio);
+function thunder(delay, vol) {
+  if (!sfx.ctx || !sfx.on) return;
+  const ctx = sfx.ctx, t0 = ctx.currentTime + delay, src = ctx.createBufferSource(); src.buffer = sfx.noise; src.loop = true;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(1000, t0); lp.frequency.exponentialRampToValueAtTime(110, t0 + 2.5);
+  const g = ctx.createGain(); g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + .04);
+  g.gain.exponentialRampToValueAtTime(vol * .45, t0 + .7); g.gain.exponentialRampToValueAtTime(.0001, t0 + 3.4);
+  src.connect(lp); lp.connect(g); g.connect(ctx.destination); src.start(t0); src.stop(t0 + 3.5);
+}
+
+// --- State cuaca ---
+const wx = { mode: 'auto', k: 0, target: 0, timer: 50 + Math.random() * 40, flashT: 9, nextBolt: 3 };
+const C_SKY_CLEAR = new THREE.Color(SKY), C_SKY_RAIN = new THREE.Color(0x67747f), C_FLASH = new THREE.Color(0xe6edff), C_CLOUD_RAIN = new THREE.Color(0x58616b);
+const C_SUN_CLEAR = new THREE.Color(0xfff2d8), C_SUN_RAIN = new THREE.Color(0xb8c4d0);
+const cloudMat = clouds[0].children[0].material;
+// pola kilat: terang - redup - terang - meluruh (seperti petir asli)
+const flashLevel = t => t < .06 ? 1 : t < .12 ? .25 : t < .2 ? .85 : Math.max(0, .85 * Math.exp(-(t - .2) * 7));
+function strike(focus) {
+  const a = Math.random() * TAU, d = 40 + Math.random() * 80;
+  buildBolt(clamp(focus.x + Math.cos(a) * d, -T_HALF + 5, T_HALF - 5), clamp(focus.z + Math.sin(a) * d, -T_HALF + 5, T_HALF - 5));
+  wx.flashT = 0;
+  thunder(d / 70, clamp(1.1 - d / 140, .25, .9));
+}
+function updateWeather(dt) {
+  const focus = mode === 'drive' ? veh.pos : mode === 'build' ? SITE : player;
+  // matahari/bayangan mengikuti fokus kamera
+  sun.position.set(focus.x + SUN_DIR.x * 100, focus.y + SUN_DIR.y * 100, focus.z + SUN_DIR.z * 100);
+  sun.target.position.set(focus.x, focus.y, focus.z); sun.target.updateMatrixWorld();
+
+  if (wx.mode === 'auto') {
+    wx.timer -= dt;
+    if (wx.timer <= 0) {
+      wx.target = wx.target ? 0 : 1;
+      wx.timer = wx.target ? 45 + Math.random() * 40 : 70 + Math.random() * 70;
+      toast(wx.target ? '🌧️ Hujan mulai turun...' : '☀️ Cuaca cerah kembali');
+    }
+  } else wx.target = wx.mode === 'rain' ? 1 : 0;
+  wx.k += clamp(wx.target - wx.k, -dt / 7, dt / 7);                           // transisi halus ~7 detik
+  const k = wx.k;
+
+  if (k > .6) { wx.nextBolt -= dt; if (wx.nextBolt <= 0) { strike(focus); wx.nextBolt = 4 + Math.random() * 9; } }
+  wx.flashT += dt;
+  const fl = wx.flashT < 1.5 ? flashLevel(wx.flashT) : 0;
+  bolt.visible = wx.flashT < .32 && fl > .2;
+
+  scene.background.copy(C_SKY_CLEAR).lerp(C_SKY_RAIN, k).lerp(C_FLASH, fl * .7);
+  scene.fog.color.copy(scene.background);
+  scene.fog.near = 70 - 45 * k; scene.fog.far = 240 - 100 * k;
+  hemi.intensity = .95 - .4 * k + fl * 1.2;
+  sun.intensity = .75 - .62 * k;
+  sun.color.copy(C_SUN_CLEAR).lerp(C_SUN_RAIN, k);
+  cloudMat.color.setRGB(1, 1, 1).lerp(C_CLOUD_RAIN, k);
+  flashEl.style.opacity = fl > .01 ? (fl * .35).toFixed(3) : 0;
+
+  updateRain(dt, k, focus);
+  updateSun(dt, 1 - k);
+  if (sfx.rainGain) { const g = sfx.on ? k * .16 : 0; if (Math.abs(g - sfx.last) > .003) { sfx.rainGain.gain.value = g; sfx.last = g; } }
+}
+
+// --- UI pengaturan cuaca & suara ---
+function refreshWxUI() {
+  document.querySelectorAll('.wx-btn').forEach(b => { const act = b.dataset.wx === wx.mode;
+    b.style.borderColor = act ? '#fff' : 'transparent'; b.style.background = act ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)'; });
+  $('btnSound').textContent = sfx.on ? '🔊 Suara: On' : '🔇 Suara: Off';
+}
+$('btnMenu').addEventListener('pointerdown', refreshWxUI);
+document.querySelectorAll('.wx-btn').forEach(b => b.addEventListener('pointerdown', e => {
+  e.preventDefault(); wx.mode = b.dataset.wx;
+  if (wx.mode === 'auto') { wx.target = wx.k > .5 ? 1 : 0; wx.timer = 40 + Math.random() * 40; }
+  if (wx.mode === 'rain') wx.nextBolt = 2;
+  refreshWxUI(); toast(`Cuaca: ${b.textContent}`);
+}));
+$('btnSound').addEventListener('pointerdown', e => { e.preventDefault(); sfx.on = !sfx.on; refreshWxUI(); });
+
 /* ---------- Game loop ---------- */
 let last = performance.now(), fAcc = 0, fN = 0;
 function update(dt) {
@@ -891,6 +1120,9 @@ function update(dt) {
     vehBlob.visible = true; const gy = surfaceY(veh.pos.x, veh.pos.z); vehBlob.position.set(veh.pos.x, gy + .06, veh.pos.z);
     vehBlob.scale.setScalar(clamp(3 - (veh.pos.y - gy) * .04, 1, 3));
   } else vehBlob.visible = false;
+  // bayangan blob murah hanya dipakai jika shadow map OFF
+  if (shadowsOn) vehBlob.visible = false;
+  playerBlob.visible = !shadowsOn && mode !== 'drive';
   if (mode === 'drive') {
     $('flightHud').textContent = `SPD ${(veh.vel.length() * 3.6) | 0} km/h  •  ALT ${Math.max(0, veh.pos.y - surfaceY(veh.pos.x, veh.pos.z)) | 0} m  •  🔥 ${veh.stats.thr}  🪽 ${veh.stats.wings}`;
   }
@@ -906,6 +1138,7 @@ function update(dt) {
   }
   fireFX.update(dt); dustFX.update(dt);
   updateCamera(dt);
+  updateWeather(dt);                              // setelah kamera: sprite matahari, glare & hujan ikut posisi kamera
   // Visibilitas tombol Craft berdasarkan lokasi area crafting
   const nearCraftArea = Math.hypot(player.x - SITE.x, player.z - SITE.z) <= 8.5;
   if (mode === 'play') {
