@@ -138,18 +138,12 @@
     <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/45 backdrop-blur-sm border border-white/15 text-white text-xs font-semibold shadow">
       <span>🪵</span><span id="woodCount">0</span> <span class="text-white/60 text-[10px]">Wood</span>
     </div>
-    <!-- Build Info & Tombol (Hanya saat mode build) -->
-    <div id="buildInfo" class="build-only chip flex-col gap-0.5 leading-tight text-xs mt-0.5">
-      <div id="statLine1"></div><div id="statLine2"></div>
-    </div>
     <div class="build-only flex gap-1.5 pointer-events-auto mt-0.5">
       <button id="btnPreset" class="chip border border-white/30 text-xs py-1 px-2">✈️ Preset</button>
       <button id="btnClear" class="chip border border-white/30 text-xs py-1 px-2">🗑 Bersihkan</button>
     </div>
   </div>
 
-  <!-- HUD penerbangan -->
-  <div id="flightHud" class="drive-only absolute top-12 left-1/2 -translate-x-1/2 chip text-sm tracking-wide">--</div>
 
   <div id="toast" class="absolute top-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-black/65 text-white text-sm opacity-0 transition-opacity duration-300 whitespace-nowrap"></div>
 
@@ -587,17 +581,58 @@ function removePart(key, refund) {
 }
 function clearParts(refund) { for (const k of [...parts.keys()]) removePart(k, refund); }
 
-// Statistik kendaraan
+// Statistik kendaraan dengan Center of Mass & Momen Aerodinamis Sayap
 function computeStats() {
   let blocks = 0, wings = 0, thr = 0;
-  parts.forEach(p => { if (p.type === 'block') blocks++; else if (p.type === 'wing') wings++; else thr++; });
-  const mass = 1 + blocks + wings * .4 + thr * .8;
-  return { blocks, wings, thr, mass, count: parts.size };
+  let sumMass = 1.2; // massa dasar kursi/kokpit di (0, 0.5, 0)
+  let sumMx = 0, sumMy = 0.6, sumMz = 0;
+  let wingsL = 0, wingsR = 0;
+  let wingLiftX = 0, wingLiftZ = 0;
+  let thrX = 0, thrY = 0;
+
+  parts.forEach(p => {
+    let m = 1.0;
+    if (p.type === 'wing') { wings++; m = 0.45; }
+    else if (p.type === 'thruster') { thr++; m = 0.85; }
+    else { blocks++; m = 1.0; }
+
+    sumMass += m;
+    const py = p.j + 0.5;
+    sumMx += m * p.i;
+    sumMy += m * py;
+    sumMz += m * p.k;
+
+    if (p.type === 'wing') {
+      if (p.i < 0) wingsL++;
+      else if (p.i > 0) wingsR++;
+      // Lengan momen lateral sayap: sayap makin jauh dari sumbu tengah memberi momen angkat lebih besar
+      wingLiftX += p.i;
+      wingLiftZ += p.k;
+    }
+    if (p.type === 'thruster') {
+      thrX += p.i;
+      thrY += (py - 0.5);
+    }
+  });
+
+  const mass = sumMass;
+  const comX = sumMx / mass;
+  const comY = sumMy / mass;
+  const comZ = sumMz / mass;
+
+  return {
+    blocks, wings, thr, mass, count: parts.size,
+    comX, comY, comZ,
+    wingsL, wingsR,
+    wingImbalanceX: wingLiftX,
+    massImbalanceX: comX,
+    wingImbalanceZ: wingLiftZ,
+    massImbalanceZ: comZ,
+    thrX, thrY
+  };
 }
 function updateStats() {
-  const s = computeStats();
-  $('statLine1').textContent = `Blok ${s.blocks} • Sayap ${s.wings} • Roket ${s.thr}`;
-  $('statLine2').textContent = `Massa ${s.mass.toFixed(1)} • Dorongan ${(s.thr * PHYS.THRUST / s.mass).toFixed(1)} m/s²`;
+  veh.stats = computeStats();
 }
 
 // Ghost preview (hover mouse) & picking
@@ -654,12 +689,21 @@ function prepareVehicle() {
   const mn = new THREE.Vector3(1e9, 1e9, 1e9), mxv = new THREE.Vector3(-1e9, -1e9, -1e9);
   parts.forEach(p => { mn.min(_t1.set(p.i, p.j + .5, p.k)); mxv.max(_t1); });
   if (!parts.size) { mn.set(0, .5, 0); mxv.set(0, .5, 0); }
-  veh.c.addVectors(mn, mxv).multiplyScalar(.5);
-  partRoot.position.copy(veh.c).negate();                       // pivot di pusat bounding
-  const h = new THREE.Vector3().subVectors(mxv, mn).multiplyScalar(.5).addScalar(.5);
+
+  // Pivot fisik kendaraan adalah Center of Mass (CoM)!
+  veh.c.set(st.comX, st.comY, st.comZ);
+  partRoot.position.copy(veh.c).negate();                       // pivot di titik berat (CoM)
+
+  // Titik tabrakan fisik bounding sudut relatif terhadap CoM
   veh.corners.length = 0;
-  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) veh.corners.push(new THREE.Vector3(sx * h.x, sy * h.y, sz * h.z));
-  veh.corners.push(new THREE.Vector3(0, -h.y, 0));
+  parts.forEach(p => {
+    const px = p.i - veh.c.x, py = (p.j + .5) - veh.c.y, pz = p.k - veh.c.z;
+    for (const sx of [-0.48, 0.48]) for (const sy of [-0.48, 0.48]) for (const sz of [-0.48, 0.48]) {
+      veh.corners.push(new THREE.Vector3(px + sx, py + sy, pz + sz));
+    }
+  });
+  if (!parts.size) veh.corners.push(new THREE.Vector3(0, -0.5, 0));
+
   veh.thrusters.length = 0;
   parts.forEach(p => { if (p.type === 'thruster') veh.thrusters.push(new THREE.Vector3(p.i, p.j + .5, p.k).sub(veh.c).add(_t1.set(0, 0, .6))); });
   veh.pos.set(SITE.x + veh.c.x, SITE.y + veh.c.y, SITE.z + veh.c.z);
@@ -674,13 +718,48 @@ function stepVehicle(dt, driving) {
   const auth = .35 + Math.min(1, speed / 14) * .65 + (st.wings > 0 ? .2 : 0);
   const wingsC = Math.min(st.wings, 10);
 
-  /* --- rotasi: input pemain + stabilitas dari sayap --- */
-  let dPitch = ax.y * 1.3 * auth * dt, dRoll = -ax.x * 2.0 * auth * dt, dYaw = -ax.x * .35 * auth * dt;
-  if (Math.abs(ax.x) < .1) dRoll += -_r.y * (.3 + wingsC * .12) * 2 * dt;                // auto-level roll
+  /* --- rotasi: input pemain + aerodinamika nyata + ketidakseimbangan sayap & bobot --- */
+  let dPitch = ax.y * 1.3 * auth * dt;
+  let dRoll  = -ax.x * 2.0 * auth * dt;
+  let dYaw   = -ax.x * .35 * auth * dt;
+
+  // 1. Torsi Roll Asimetris (Guling Kiri/Kanan):
+  // a) Bobot asimetris: sisi kanan yang lebih berat (massImbalanceX > 0) ditarik gravitasi bumi ke bawah -> DOYONG KE KANAN (dRoll bernilai negatif)
+  const gravRoll = -st.massImbalanceX * 1.8;
+  // b) Momen sayap: jika sayap kanan lebih banyak/panjang, drag & massa sayap juga menambah kecenderungan miring ke sisi dominan
+  const wingImbalanceRoll = -st.wingImbalanceX * 0.14 * clamp(vf / 15, 0, 1.8);
+  dRoll += (gravRoll + wingImbalanceRoll) * dt;
+
+  // 2. Torsi Yaw Asimetris (Belok Kiri/Kanan):
+  // a) Hambatan sayap & beban: sisi yang lebih banyak beban/sayap memiliki drag lebih besar di udara, menarik hidung belok ke sisi itu (dYaw bernilai negatif untuk belok kanan)
+  const aeroYaw = -(st.wingImbalanceX * 0.14 + st.massImbalanceX * 0.22) * clamp(vf / 12, 0, 2.0);
+  // b) Thrust asimetris: roket di kanan mendorong hidung memutar ke kiri (dYaw bernilai positif)
+  const thrYaw = st.thrX * 0.35 * (gas ? 1 : 0);
+  dYaw += (aeroYaw + thrYaw) * dt;
+
+  // 3. Torsi Pitch Asimetris (Menukik / Mendongak):
+  // Beban di depan (massImbalanceZ < 0) membuat hidung menukik ke bawah (dPitch bernilai negatif)
+  const gravPitch = st.massImbalanceZ * 0.55;
+  // Sayap di belakang mengangkat ekor -> hidung menunduk (pitch down)
+  const aeroPitch = -st.wingImbalanceZ * 0.15 * clamp((vf * vf) / 70, 0, 2.0);
+  // Roket di bawah CoM mendorong hidung mendongak ke atas
+  const thrPitch = -st.thrY * 0.25 * (gas ? 1 : 0);
+  dPitch += (gravPitch + aeroPitch + thrPitch) * dt;
+
+  // 4. Stabilitas Sayap & Auto-Level:
+  // Jika pesawat asimetris, auto-level tidak boleh menetralkan ketidakseimbangan!
+  // Kekuatan auto-level berkurang drastis jika pesawat berat sebelah sehingga pemain merasakan langsung doyongnya.
+  const asymmetryFactor = clamp(Math.abs(st.wingImbalanceX) * 0.3 + Math.abs(st.massImbalanceX) * 0.7, 0, 0.95);
+  const autoLevelPower = Math.max(0.05, 1.0 - asymmetryFactor);
+
+  if (Math.abs(ax.x) < .1) {
+    dRoll += -_r.y * (.25 + wingsC * .1) * 2 * autoLevelPower * dt;
+  }
+
   if (speed > 4) {
     const aoa = Math.atan2(veh.vel.dot(_u), vf), beta = Math.atan2(veh.vel.dot(_r), vf);
     const k = clamp(speed / 15, 0, 1);
-    dPitch += aoa * wingsC * .25 * k * dt;                                             // hidung mengikuti arah gerak
+    dPitch += aoa * wingsC * .25 * k * dt;
     dYaw += -beta * wingsC * .2 * k * dt;
   }
   if (st.wings === 0 && st.count > 0) dPitch -= .3 * dt;                              // tanpa sayap: hidung jatuh
@@ -911,7 +990,6 @@ function toggleCraft() {
     // kendaraan dikembalikan ke area rakit untuk diedit
     veh.sim = false; partRoot.position.set(0, 0, 0); vehGroup.position.set(SITE.x, SITE.y, SITE.z); vehGroup.quaternion.identity();
     grid.visible = true; setMode('build'); updateStats();
-    toast('Mode Build: ketuk grid/kendaraan untuk memasang');
   }
 }
 function interact() {
@@ -1533,9 +1611,7 @@ function update(dt) {
   // bayangan blob murah hanya dipakai jika shadow map OFF
   if (shadowsOn) vehBlob.visible = false;
   playerBlob.visible = !shadowsOn && mode !== 'drive';
-  if (mode === 'drive') {
-    $('flightHud').textContent = `SPD ${(veh.vel.length() * 3.6) | 0} km/h  •  ALT ${Math.max(0, veh.pos.y - surfaceY(veh.pos.x, veh.pos.z)) | 0} m  •  🔥 ${veh.stats.thr}  🪽 ${veh.stats.wings}`;
-  }
+
   // animasi pohon (tumbang / getar)
   if (animTrees.size) {
     for (const i of animTrees) {
