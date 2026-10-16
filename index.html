@@ -375,7 +375,7 @@
   </div>
 
 
-  <div id="toast" class="absolute top-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-black/65 text-white text-sm opacity-0 transition-opacity duration-300 whitespace-nowrap"></div>
+  <div id="toast" style="display:none !important;" class="hidden pointer-events-none"></div>
 
   <!-- Virtual joystick (aktif di play, build untuk pan kamera vertikal, dan drive) -->
   <div id="joyBase" class="absolute pointer-events-auto rounded-full"
@@ -525,6 +525,8 @@ const SKY = 0xaee0ff;
 const canvas = $('gl');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: params.get('aa') === '1', powerPreference: 'high-performance' });
 renderer.shadowMap.enabled = false;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 250, 950);               // sembunyikan batas map luas dengan kabut atmosfer
@@ -635,20 +637,38 @@ function getGroundColor(x, y, z, n1, n2) {
   const nMeadow = fbm(x * 0.0038 + 14.2, z * 0.0038 + 48.9, 3);
   const grassMask = clamp((nMeadow - 0.47) / 0.08, 0, 1);
 
-  // Tone rumput: campuran hijau mentah & hijau matang
-  const toneVal = fbm(x * 0.009 + 33.1, z * 0.009 + 71.4, 2);
+  // Tone rumput: campuran hijau segar existing & hijau matang pekat
+  const toneRaw = fbm(x * 0.008 + 33.1, z * 0.008 + 71.4, 2);
+  const toneVal = clamp((toneRaw - 0.38) / 0.24, 0, 1);
 
   // A. Warna tanah tandus / gersang (arid earth, savanna clay, dry weathered soil)
   const soilR = 0.48 + n2 * 0.07;
   const soilG = 0.40 + n2 * 0.05;
   const soilB = 0.28 + n2 * 0.04;
 
-  // B. Warna padang rumput: perpaduan hijau mentah & hijau matang
-  const rawR = 0.32 + n1 * 0.04, rawG = 0.52 + n1 * 0.05, rawB = 0.13 + n2 * 0.02;
-  const matR = 0.22 + n1 * 0.03, matG = 0.40 + n1 * 0.04, matB = 0.12 + n2 * 0.02;
-  const grassR = THREE.MathUtils.lerp(rawR, matR, toneVal);
-  const grassG = THREE.MathUtils.lerp(rawG, matG, toneVal);
-  const grassB = THREE.MathUtils.lerp(rawB, matB, toneVal);
+  // B. Warna padang rumput hijau: perpaduan hijau segar existing & hijau matang pekat
+  const rawR = 0.30 + n1 * 0.04, rawG = 0.52 + n1 * 0.05, rawB = 0.12 + n2 * 0.02;
+  const matR = 0.16 + n1 * 0.03, matG = 0.36 + n1 * 0.04, matB = 0.09 + n2 * 0.02;
+  let grassR = THREE.MathUtils.lerp(rawR, matR, toneVal);
+  let grassG = THREE.MathUtils.lerp(rawG, matG, toneVal);
+  let grassB = THREE.MathUtils.lerp(rawB, matB, toneVal);
+
+  // Varian warna hangat di titik tertentu (kuning keemasan & oranye amber)
+  const nWarmA = Math.sin(x * 0.018 + 3.7) * Math.cos(z * 0.018 + 8.1);
+  const nWarmB = Math.sin(x * 0.038 - 1.2) * Math.cos(z * 0.038 + 4.9);
+  const nWarm = nWarmA * 0.65 + nWarmB * 0.35;
+  const warmPatch = clamp((nWarm - 0.24) / 0.34, 0, 1);
+  if (warmPatch > 0) {
+    const nType = clamp(Math.sin(x * 0.011 + 14.5) * Math.cos(z * 0.011 - 23.2) * 0.5 + 0.5, 0, 1);
+    const yelR = 0.48 + n1 * 0.04, yelG = 0.46 + n1 * 0.04, yelB = 0.14 + n2 * 0.02;
+    const oraR = 0.52 + n1 * 0.04, oraG = 0.32 + n1 * 0.03, oraB = 0.12 + n2 * 0.02;
+    const warmR = THREE.MathUtils.lerp(yelR, oraR, nType);
+    const warmG = THREE.MathUtils.lerp(yelG, oraG, nType);
+    const warmB = THREE.MathUtils.lerp(yelB, oraB, nType);
+    grassR = THREE.MathUtils.lerp(grassR, warmR, warmPatch * 0.70);
+    grassG = THREE.MathUtils.lerp(grassG, warmG, warmPatch * 0.70);
+    grassB = THREE.MathUtils.lerp(grassB, warmB, warmPatch * 0.70);
+  }
 
   return [
     THREE.MathUtils.lerp(soilR, grassR, grassMask),
@@ -747,12 +767,16 @@ function getTerrainColor(x, y, z, ny) {
   scene.add(terrainMesh);
 })();
 
-// --- PADANG RUMPUT SUPER RIMBUN DENGAN HELAI TIPIS RAMPING (3 LAPISAN TUSSOCK) ---
-// Radius 55m. 20 helai tipis (~3cm) per rumpun x 45.000 titik (jarak antar titik 51cm) = 900.000 helai tipis padat.
-// Saling tumpang tindih penuh tanpa celah kosong, helai tipis anggun dan tetap sangat rimbun.
-const GRASS_R = 55;                       // radius area rumput 55 meter (kepadatan tinggi di sekitar pemain)
-const GRASS_MAX = 45000;                  // 45.000 rumpun super padat (total 900.000 helai tipis)
-const GRASS_BY_Q = [20000, 32000, 45000]; // jumlah rumpun per level kualitas (LOW/MED/HIGH)
+// --- SISTEM PADANG RUMPUT BERORIENTASI KAMERA DENGAN CULLING BELAKANG & KELAS JAUH/DEKAT ---
+// 1. Seluruh area landscape depan pandangan kamera ter-spawn rumput penuh hingga jarak 440m+.
+// 2. Culling sisi belakang kamera dihitung seragam pada akar rumpun (clump root) tanpa poligon tearing / glitch.
+// 3. Variasi 4 warna kaya: hijau segar, hijau matang pekat, kuning keemasan, dan oranye amber hangat.
+const GRASS_MAX_NEAR = 35000;                  // 35.000 rumpun dekat ultra-rimbun (16 helai multi-lapis)
+const GRASS_MAX_FAR  = 70000;                  // 70.000 rumpun bentang alam bukit jauh padat rapat (18 helai overlapping)
+const GRASS_MAX = GRASS_MAX_NEAR + GRASS_MAX_FAR;
+const GRASS_NEAR_BY_Q = [15000, 25000, 35000]; // jumlah rumpun dekat per kualitas (LOW/MED/HIGH)
+const GRASS_FAR_BY_Q  = [30000, 50000, 70000]; // jumlah rumpun jauh per kualitas (LOW/MED/HIGH)
+const GRASS_BY_Q      = [45000, 75000, 105000]; // total rumpun per kualitas
 
 const grassHeightTex = (function makeHeightTex() {
   let hMin = Infinity, hMax = -Infinity;
@@ -780,18 +804,19 @@ const grassHeightTex = (function makeHeightTex() {
       const slopeZ = (hU - hD) / (2 * T_D);
       const ny = 1.0 / Math.hypot(slopeX, 1.0, slopeZ);
 
-      // Kanal B: Mask padang rumput (45% rumput rimbun, 55% tandus)
+      // Kanal B: Mask padang rumput (sinkron dengan getTerrainColor & getGroundColor)
       let grassByte = 0;
-      if (ny >= 0.72 && y < 75) {
+      if (ny >= 0.68 && y < 85) {
         const nMeadow = fbm(x * 0.0038 + 14.2, z * 0.0038 + 48.9, 3);
         const grassF = clamp((nMeadow - 0.47) / 0.08, 0, 1);
         grassByte = Math.round(grassF * 255);
       }
       data[i * 4 + 2] = grassByte;
 
-      // Kanal A: Tone variasi rumput (0 = hijau mentah, 255 = hijau matang)
-      const toneVal = fbm(x * 0.009 + 33.1, z * 0.009 + 71.4, 2);
-      data[i * 4 + 3] = Math.round(clamp(toneVal, 0, 1) * 255);
+      // Kanal A: Tone variasi rumput (0 = hijau segar existing, 255 = hijau matang pekat)
+      const toneRaw = fbm(x * 0.008 + 33.1, z * 0.008 + 71.4, 2);
+      const toneVal = clamp((toneRaw - 0.38) / 0.24, 0, 1);
+      data[i * 4 + 3] = Math.round(toneVal * 255);
     }
   }
 
@@ -805,56 +830,58 @@ const grassHeightTex = (function makeHeightTex() {
   return tex;
 })();
 
-const grassBladeGeo = (function makeGrassBladeGeo() {
+// A. Geometri rumpun dekat (Near field): 16 helai tipis anggun dalam 3 lapisan tussock
+const grassBladeGeoNear = (function makeGrassBladeGeoNear() {
   const g = new THREE.InstancedBufferGeometry();
   const rr = rng32(9191);
   const pos = [], tAttr = [], idx = [];
-  const BLADES_PER_CLUMP = 20; // 20 strip tipis per rumpun dalam 3 lapisan (inti, tengah, luar)
+  const BLADES_PER_CLUMP = 16;
   for (let b = 0; b < BLADES_PER_CLUMP; b++) {
     let a, radDist, ox, oz, w, topW, h, lean;
     const rndW = rr(), rndH = rr(), rndL = rr();
-    w = 0.024 + rndW * 0.014; // helai tipis ramping alami (~2.4 - 3.8 cm)
-    topW = w * 0.85;
+    // Helai ramping halus elegan (~1.2 - 1.8 cm) dengan ujung meruncing tajam
+    w = 0.012 + rndW * 0.006;
+    topW = w * 0.35;
 
-    if (b < 6) {
-      // Lapisan 1: Inti tengah tegak rapat (6 helai)
-      a = (b / 6) * Math.PI * 2 + (rr() - 0.5) * 0.35;
+    // Tinggi seragam proporsional (~0.38m - 0.52m)
+    if (b < 5) {
+      // Lapisan 1: Inti tengah tegak rapat (5 helai)
+      a = (b / 5) * Math.PI * 2 + (rr() - 0.5) * 0.35;
       const ca = Math.cos(a), sa = Math.sin(a);
       radDist = 0.04 + rr() * 0.08;
+      ox = ca * radDist + (rr() - 0.5) * 0.04;
+      oz = sa * radDist + (rr() - 0.5) * 0.04;
+      h = 0.46 + rndH * 0.12;
+      lean = 0.14 + rndL * 0.06;
+    } else if (b < 10) {
+      // Lapisan 2: Lingkar tengah menyebar lembut (5 helai)
+      a = ((b - 5) / 5) * Math.PI * 2 + (rr() - 0.5) * 0.30;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      radDist = 0.14 + rr() * 0.10;
       ox = ca * radDist + (rr() - 0.5) * 0.05;
       oz = sa * radDist + (rr() - 0.5) * 0.05;
-      h = 0.55 + rndH * 0.18;
-      lean = 0.14 + rndL * 0.08;
-    } else if (b < 13) {
-      // Lapisan 2: Lingkar tengah menyebar lembut (7 helai)
-      a = ((b - 6) / 7) * Math.PI * 2 + (rr() - 0.5) * 0.30;
-      const ca = Math.cos(a), sa = Math.sin(a);
-      radDist = 0.16 + rr() * 0.12;
-      ox = ca * radDist + (rr() - 0.5) * 0.07;
-      oz = sa * radDist + (rr() - 0.5) * 0.07;
-      h = 0.48 + rndH * 0.16;
-      lean = 0.28 + rndL * 0.12;
+      h = 0.42 + rndH * 0.10;
+      lean = 0.24 + rndL * 0.08;
     } else {
-      // Lapisan 3: Lingkar luar melengkung menutup tanah (7 helai)
-      a = ((b - 13) / 7) * Math.PI * 2 + (rr() - 0.5) * 0.30;
+      // Lapisan 3: Lingkar luar melengkung menutup tanah (6 helai)
+      a = ((b - 10) / 6) * Math.PI * 2 + (rr() - 0.5) * 0.30;
       const ca = Math.cos(a), sa = Math.sin(a);
-      radDist = 0.28 + rr() * 0.15;
-      ox = ca * radDist + (rr() - 0.5) * 0.09;
-      oz = sa * radDist + (rr() - 0.5) * 0.09;
-      h = 0.42 + rndH * 0.14;
-      lean = 0.42 + rndL * 0.14;
+      radDist = 0.24 + rr() * 0.12;
+      ox = ca * radDist + (rr() - 0.5) * 0.06;
+      oz = sa * radDist + (rr() - 0.5) * 0.06;
+      h = 0.38 + rndH * 0.10;
+      lean = 0.36 + rndL * 0.10;
     }
 
     const ca = Math.cos(a), sa = Math.sin(a);
     const lx = ca * lean * 0.32, lz = sa * lean * 0.32;
     const base = pos.length / 3;
 
-    // 4 titik sudut membentuk quad pita lurus tipis ramping (strip)
     pos.push(
-      ox - ca * w, 0, oz - sa * w,                 // v0: bawah kiri
-      ox + ca * w, 0, oz + sa * w,                 // v1: bawah kanan
-      ox + ca * topW + lx, h, oz + sa * topW + lz, // v2: atas kanan
-      ox - ca * topW + lx, h, oz - sa * topW + lz  // v3: atas kiri
+      ox - ca * w, 0, oz - sa * w,
+      ox + ca * w, 0, oz + sa * w,
+      ox + ca * topW + lx, h, oz + sa * topW + lz,
+      ox - ca * topW + lx, h, oz - sa * topW + lz
     );
     tAttr.push(0, 0, 1, 1);
     idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -863,165 +890,365 @@ const grassBladeGeo = (function makeGrassBladeGeo() {
   g.setAttribute('aT', new THREE.Float32BufferAttribute(tAttr, 1));
   g.setIndex(idx);
 
-  const side = Math.ceil(Math.sqrt(GRASS_MAX)), cellSz = (GRASS_R * 2) / side;
+  const uR = 65.0; // Radius 65m berpusat penuh di sekitar pemain
+  const side = Math.ceil(Math.sqrt(GRASS_MAX_NEAR)), cellSz = (uR * 2.0) / side;
   const order = []; for (let i = 0; i < side * side; i++) order.push(i);
   for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; }
-  const off = new Float32Array(GRASS_MAX * 2), rnd = new Float32Array(GRASS_MAX * 3);
-  for (let i = 0; i < GRASS_MAX; i++) {
+  const off = new Float32Array(GRASS_MAX_NEAR * 2), rnd = new Float32Array(GRASS_MAX_NEAR * 3);
+  for (let i = 0; i < GRASS_MAX_NEAR; i++) {
     const k = order[i], cx = k % side, cz = (k / side) | 0;
     off[i * 2] = (cx + rr()) * cellSz; off[i * 2 + 1] = (cz + rr()) * cellSz;
     rnd[i * 3] = rr(); rnd[i * 3 + 1] = rr(); rnd[i * 3 + 2] = rr();
   }
   g.setAttribute('aOffset', new THREE.InstancedBufferAttribute(off, 2));
   g.setAttribute('aRand', new THREE.InstancedBufferAttribute(rnd, 3));
-  g.instanceCount = GRASS_MAX;
+  g.instanceCount = GRASS_MAX_NEAR;
   return g;
 })();
 
-const grassMat = new THREE.ShaderMaterial({
-  uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-    uCenter: { value: new THREE.Vector2() },
-    uR: { value: GRASS_R },
-    uHeight: { value: null },
-    uHRange: { value: new THREE.Vector2() },
-    uTerr: { value: new THREE.Vector3(T_D, T_HALF, T_W) },
-    uLight: { value: new THREE.Color(1, 1, 1) }
-  }]),
-  vertexShader: `
-    attribute float aT;
-    attribute vec2 aOffset;
-    attribute vec3 aRand;
-    uniform vec2 uCenter;
-    uniform float uR;
-    uniform sampler2D uHeight;
-    uniform vec2 uHRange;
-    uniform vec3 uTerr;
-    varying float vT;
-    varying float vTone;
-    #include <fog_pars_vertex>
-    float hAt(float ix, float iz, out float outGrass, out float outTone) {
-      vec4 c = texture2D(uHeight, vec2((ix + 0.5) / uTerr.z, (iz + 0.5) / uTerr.z));
-      float v = floor(c.r * 255.0 + 0.5) * 256.0 + floor(c.g * 255.0 + 0.5);
-      outGrass = c.b;
-      outTone = c.a;
-      return v / 65535.0 * (uHRange.y - uHRange.x) + uHRange.x;
+// B. Geometri rumpun bentang alam bukit jauh (Far field): 18 helai ramping halus (>660% lebih tipis dari sebelumnya)
+// Tinggi dan karakter identik 100% dengan rumput dekat sehingga tidak timbul dan tidak menyusut saat didekati
+const grassBladeGeoFar = (function makeGrassBladeGeoFar() {
+  const g = new THREE.InstancedBufferGeometry();
+  const rr = rng32(7331);
+  const pos = [], tAttr = [], idx = [];
+  const BLADES_PER_CLUMP = 18;
+  for (let b = 0; b < BLADES_PER_CLUMP; b++) {
+    let a, radDist, ox, oz, w, topW, h, lean;
+    const rndW = rr(), rndH = rr(), rndL = rr();
+    // 660% lebih tipis dari sebelumnya (~0.013m - 0.020m = 1.3cm - 2.0cm) dengan ujung jarum runcing
+    w = 0.013 + rndW * 0.007;
+    topW = w * 0.35;
+
+    if (b < 6) {
+      // Lapisan 1: Inti tengah tegak rapat (6 helai)
+      a = (b / 6) * Math.PI * 2 + (rr() - 0.5) * 0.35;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      radDist = 0.06 + rr() * 0.08;
+      ox = ca * radDist + (rr() - 0.5) * 0.04;
+      oz = sa * radDist + (rr() - 0.5) * 0.04;
+      h = 0.46 + rndH * 0.12;
+      lean = 0.14 + rndL * 0.06;
+    } else if (b < 12) {
+      // Lapisan 2: Lingkar tengah menyebar rimbun (6 helai)
+      a = ((b - 6) / 6) * Math.PI * 2 + (rr() - 0.5) * 0.30;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      radDist = 0.18 + rr() * 0.12;
+      ox = ca * radDist + (rr() - 0.5) * 0.06;
+      oz = sa * radDist + (rr() - 0.5) * 0.06;
+      h = 0.42 + rndH * 0.10;
+      lean = 0.24 + rndL * 0.08;
+    } else {
+      // Lapisan 3: Lingkar luar melengkung halus menutup rongga tanah (6 helai)
+      a = ((b - 12) / 6) * Math.PI * 2 + (rr() - 0.5) * 0.30;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      radDist = 0.30 + rr() * 0.16;
+      ox = ca * radDist + (rr() - 0.5) * 0.08;
+      oz = sa * radDist + (rr() - 0.5) * 0.08;
+      h = 0.38 + rndH * 0.10;
+      lean = 0.36 + rndL * 0.10;
     }
-    void main() {
-      float cell = uR * 2.0;
-      vec2 wp = uCenter + mod(aOffset - uCenter + uR, cell) - uR;
-      float gx = clamp((wp.x + uTerr.y) / uTerr.x, 0.0, uTerr.z - 1.001);
-      float gz = clamp((wp.y + uTerr.y) / uTerr.x, 0.0, uTerr.z - 1.001);
-      float ix = floor(gx), iz = floor(gz);
-      float u = gx - ix, v = gz - iz;
-      float g00, g10, g01, g11;
-      float t00, t10, t01, t11;
-      float h00 = hAt(ix, iz, g00, t00);
-      float h10 = hAt(ix + 1.0, iz, g10, t10);
-      float h01 = hAt(ix, iz + 1.0, g01, t01);
-      float h11 = hAt(ix + 1.0, iz + 1.0, g11, t11);
 
-      float gy, gMask, gTone;
-      if (v >= u) {
-        gy = h00 + u * (h11 - h01) + v * (h01 - h00);
-        gMask = g00 + u * (g11 - g01) + v * (g01 - g00);
-        gTone = t00 + u * (t11 - t01) + v * (t01 - t00);
-      } else {
-        gy = h00 + v * (h11 - h10) + u * (h10 - h00);
-        gMask = g00 + v * (g11 - g10) + u * (g10 - g00);
-        gTone = t00 + v * (t11 - t10) + u * (t10 - t00);
-      }
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const lx = ca * lean * 0.32, lz = sa * lean * 0.32;
+    const base = pos.length / 3;
 
-      float sx = (h10 - h00) / uTerr.x, sz = (h01 - h00) / uTerr.x;
-      float ny = inversesqrt(1.0 + sx * sx + sz * sz);
+    pos.push(
+      ox - ca * w, 0, oz - sa * w,
+      ox + ca * w, 0, oz + sa * w,
+      ox + ca * topW + lx, h, oz + sa * topW + lz,
+      ox - ca * topW + lx, h, oz - sa * topW + lz
+    );
+    tAttr.push(0, 0, 1, 1);
+    idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aT', new THREE.Float32BufferAttribute(tAttr, 1));
+  g.setIndex(idx);
 
-      // Jarak relatif terhadap pusat lingkaran rumput
-      float d = length(wp - uCenter) / uR;
+  const uR = 180.0; // Jangkauan luas 180m (box 360m x 360m)
+  const side = Math.ceil(Math.sqrt(GRASS_MAX_FAR)), cellSz = (uR * 2.0) / side;
+  const order = []; for (let i = 0; i < side * side; i++) order.push(i);
+  for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; }
+  const off = new Float32Array(GRASS_MAX_FAR * 2), rnd = new Float32Array(GRASS_MAX_FAR * 3);
+  for (let i = 0; i < GRASS_MAX_FAR; i++) {
+    const k = order[i], cx = k % side, cz = (k / side) | 0;
+    off[i * 2] = (cx + rr()) * cellSz; off[i * 2 + 1] = (cz + rr()) * cellSz;
+    rnd[i * 3] = rr(); rnd[i * 3 + 1] = rr(); rnd[i * 3 + 2] = rr();
+  }
+  g.setAttribute('aOffset', new THREE.InstancedBufferAttribute(off, 2));
+  g.setAttribute('aRand', new THREE.InstancedBufferAttribute(rnd, 3));
+  g.instanceCount = GRASS_MAX_FAR;
+  return g;
+})();
 
-      // Skala jarak dijaga tetap ramping tipis tanpa menggembung lebar
-      float distScale = 1.0 + smoothstep(0.2, 0.85, d) * 0.20;
+const grassBladeGeo = grassBladeGeoNear; // Compatibility alias
 
-      // Fade halus di tepi terjauh (0.88..1.0), lereng tebing terjal, dan puncak salju
-      float fade = (1.0 - smoothstep(0.88, 1.0, d)) * smoothstep(0.70, 0.82, ny) * (1.0 - smoothstep(68.0, 85.0, gy));
+const grassVertexShader = `
+  attribute float aT;
+  attribute vec2 aOffset;
+  attribute vec3 aRand;
 
-      // 45% rumput rimbun: tampil penuh ukuran 100% tanpa helai kerdil menyusut
-      float meadowFade = smoothstep(0.02, 0.12, gMask);
-      fade *= meadowFade;
+  uniform vec2 uCenter;
+  uniform float uR;
+  uniform sampler2D uHeight;
+  uniform vec2 uHRange;
+  uniform vec3 uTerr;
+  uniform vec3 uCamPos;
+  uniform vec4 uDistFade;
 
-      float a = aRand.x * 6.2831853;
-      float ca = cos(a), sa = sin(a);
-      vec3 p = position;
-      p.xz = vec2(ca * p.x - sa * p.z, sa * p.x + ca * p.z) * distScale;
-      float hs = (0.85 + aRand.y * 0.35);
-      p.y *= hs * (1.0 + smoothstep(0.3, 0.9, d) * 0.15);
-      p *= fade;
+  varying float vT;
+  varying float vTone;
+  varying float vWarm;
+  varying float vWarmType;
 
-      // Rumput diam sepenuhnya tanpa efek gerakan / ayunan angin
-      vec3 world = vec3(wp.x, gy - 0.05, wp.y) + p;
-      vec4 mvPosition = viewMatrix * vec4(world, 1.0);
-      gl_Position = projectionMatrix * mvPosition;
-      vT = aT;
-      // Variasi hijau mentah dan hijau matang dengan jitter per-rumpun
-      vTone = clamp(gTone + (aRand.z - 0.5) * 0.35, 0.0, 1.0);
-      #include <fog_vertex>
+  #include <fog_pars_vertex>
+
+  float hAt(float ix, float iz, out float outGrass, out float outTone) {
+    vec4 c = texture2D(uHeight, vec2((ix + 0.5) / uTerr.z, (iz + 0.5) / uTerr.z));
+    float v = floor(c.r * 255.0 + 0.5) * 256.0 + floor(c.g * 255.0 + 0.5);
+    outGrass = c.b;
+    outTone = c.a;
+    return v / 65535.0 * (uHRange.y - uHRange.x) + uHRange.x;
+  }
+
+  void main() {
+    float cell = uR * 2.0;
+    vec2 wp = uCenter + mod(aOffset - uCenter + uR, cell) - uR;
+
+    // 1. SAMPLING KETINGGIAN & NORMAL LERENG DARI HEIGHTMAP
+    float gx = clamp((wp.x + uTerr.y) / uTerr.x, 0.0, uTerr.z - 1.001);
+    float gz = clamp((wp.y + uTerr.y) / uTerr.x, 0.0, uTerr.z - 1.001);
+    float ix = floor(gx), iz = floor(gz);
+    float u = gx - ix, v = gz - iz;
+    float g00, g10, g01, g11;
+    float t00, t10, t01, t11;
+    float h00 = hAt(ix, iz, g00, t00);
+    float h10 = hAt(ix + 1.0, iz, g10, t10);
+    float h01 = hAt(ix, iz + 1.0, g01, t01);
+    float h11 = hAt(ix + 1.0, iz + 1.0, g11, t11);
+
+    float gy, gMask, gTone;
+    if (v >= u) {
+      gy = h00 + u * (h11 - h01) + v * (h01 - h00);
+      gMask = g00 + u * (g11 - g01) + v * (g01 - g00);
+      gTone = t00 + u * (t11 - t01) + v * (t01 - t00);
+    } else {
+      gy = h00 + v * (h11 - h10) + u * (h10 - h00);
+      gMask = g00 + v * (g11 - g10) + u * (g10 - g00);
+      gTone = t00 + v * (t11 - t10) + u * (t10 - t00);
     }
-  `,
-  fragmentShader: `
-    uniform vec3 uLight;
-    varying float vT;
-    varying float vTone;
-    #include <fog_pars_fragment>
-    void main() {
-      // 1. Hijau mentah segar (young anime lime / chartreuse)
-      vec3 rawBase = vec3(0.34, 0.54, 0.12);
-      vec3 rawTip  = vec3(0.44, 0.68, 0.16);
-      vec3 rawCol  = mix(rawBase, rawTip, vT * 0.45);
 
-      // 2. Hijau matang rimbun (deep mature forest emerald)
-      vec3 matureBase = vec3(0.20, 0.38, 0.12);
-      vec3 matureTip  = vec3(0.26, 0.48, 0.15);
-      vec3 matureCol  = mix(matureBase, matureTip, vT * 0.45);
+    float sx = (h10 - h00) / uTerr.x, sz = (h01 - h00) / uTerr.x;
+    float ny = inversesqrt(1.0 + sx * sx + sz * sz);
 
-      // Campuran hijau mentah dan hijau matang di area tertentu
-      vec3 col = mix(rawCol, matureCol, vTone);
-      gl_FragColor = vec4(col * uLight, 1.0);
-      #include <fog_fragment>
+    // 2. FAKTOR PUDAR & KELAYAKAN TUMBUH RUMPUT
+    float meadowFade = smoothstep(0.01, 0.10, gMask);
+    float fade = meadowFade;
+
+    // Lereng tebing batu curam (ny < 0.66) tidak ditumbuhi rumput
+    fade *= smoothstep(0.66, 0.74, ny);
+
+    // Puncak pegunungan salju (gy > 78m) memudar lembut
+    fade *= (1.0 - smoothstep(76.0, 86.0, gy));
+
+    // Transisi jarak lembut
+    vec2 toPlayer = wp - uCamPos.xz;
+    float distToPlayer = length(toPlayer);
+    if (uDistFade.y > 0.0) {
+      fade *= smoothstep(uDistFade.x, uDistFade.y, distToPlayer);
     }
-  `,
-  fog: true,
-  side: THREE.DoubleSide
-});
-grassMat.uniforms.uHeight.value = grassHeightTex;
-grassMat.uniforms.uHRange.value.set(grassHeightTex.hMin, grassHeightTex.hMax);
+    if (uDistFade.w > 0.0) {
+      fade *= (1.0 - smoothstep(uDistFade.z, uDistFade.w, distToPlayer));
+    }
 
-const grassField = new THREE.Mesh(grassBladeGeo, grassMat);
-grassField.frustumCulled = false;
-grassField.userData.isGrass = true;
-scene.add(grassField);
+    // Culling sisi belakang kamera: dihitung seragam pada AKAR RUMPUN (clump root)
+    // Menghilangkan 100% bug poligon melintang / tearing saat kamera menunduk ke bawah
+    vec3 clumpRoot = vec3(wp.x, gy - 0.04, wp.y);
+    vec4 rootMv = viewMatrix * vec4(clumpRoot, 1.0);
+    if (rootMv.z > 1.2) {
+      fade = 0.0;
+    }
+
+    if (fade < 0.005) {
+      // Degenerate vertex: semua vertex diletakkan di koordinat identik di luar layar tanpa poligon pecah
+      gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
+      vT = 0.0;
+      vTone = 0.0;
+      vWarm = 0.0;
+      vWarmType = 0.0;
+      return;
+    }
+
+    // 3. TRANSFORMASI & KETINGGIAN SERAGAM
+    float a = aRand.x * 6.2831853;
+    float ca = cos(a), sa = sin(a);
+    vec3 p = position;
+    p.xz = vec2(ca * p.x - sa * p.z, sa * p.x + ca * p.z);
+    float hs = 0.88 + aRand.y * 0.24;
+    p.y *= hs;
+    p *= fade;
+
+    vec3 world = clumpRoot + p;
+    vec4 mvPosition = viewMatrix * vec4(world, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+
+    vT = aT;
+
+    // 4. VARIASI WARNA: HIJAU MATANG & HIJAU SEGAR EXISTING
+    float mixTone = mix(gTone, aRand.z, 0.58);
+    vTone = smoothstep(0.18, 0.82, mixTone);
+
+    // 5. VARIASI WARNA: ORANYE & KUNING DI TITIK TERTENTU
+    // Noise spasial 2D harmonik pada koordinat dunia (wp)
+    float nWarmA = sin(wp.x * 0.018 + 3.7) * cos(wp.y * 0.018 + 8.1);
+    float nWarmB = sin(wp.x * 0.038 - 1.2) * cos(wp.y * 0.038 + 4.9);
+    float nWarm = nWarmA * 0.65 + nWarmB * 0.35; // rentang -1.0 .. +1.0
+
+    // Hamparan hangat di titik tertentu (sekitar 20% area padang rumput)
+    float warmPatch = smoothstep(0.24, 0.58, nWarm);
+    // Tambahan aksen rumpun individual liar (12% kemungkinan)
+    float accentClump = step(0.88, aRand.z);
+    vWarm = clamp(warmPatch + accentClump * 0.70, 0.0, 1.0);
+
+    // Tipe warna hangat: 0 = Kuning keemasan cerah, 1 = Oranye amber hangat
+    float nType = sin(wp.x * 0.011 + 14.5) * cos(wp.y * 0.011 - 23.2) * 0.5 + 0.5;
+    vWarmType = clamp(nType + (aRand.y - 0.5) * 0.4, 0.0, 1.0);
+
+    #include <fog_vertex>
+  }
+`;
+
+const grassFragmentShader = `
+  uniform vec3 uLight;
+  varying float vT;
+  varying float vTone;
+  varying float vWarm;
+  varying float vWarmType;
+  #include <fog_pars_fragment>
+
+  void main() {
+    // 1. Hijau Segar Existing (Vibrant Lush Young Lime / Chartreuse)
+    vec3 rawBase = vec3(0.24, 0.44, 0.09);
+    vec3 rawTip  = vec3(0.44, 0.70, 0.15);
+    vec3 colFresh = mix(rawBase, rawTip, pow(vT, 0.85));
+
+    // 2. Hijau Matang Pekat (Deep Mature Highland Forest / Rich Olive Emerald)
+    vec3 matBase = vec3(0.10, 0.25, 0.06);
+    vec3 matTip  = vec3(0.22, 0.42, 0.11);
+    vec3 colMature = mix(matBase, matTip, pow(vT, 0.85));
+
+    // Perpaduan variasi hijau alami
+    vec3 colGreen = mix(colFresh, colMature, vTone);
+
+    // 3. Varian Kuning Keemasan (Sunlit Golden Prairie / Wild Golden Rye)
+    vec3 yelBase = vec3(0.32, 0.35, 0.08);
+    vec3 yelTip  = vec3(0.80, 0.70, 0.16);
+    vec3 colYellow = mix(yelBase, yelTip, pow(vT, 0.85));
+
+    // 4. Varian Oranye Amber Hangat (Warm Amber Orange / Autumnal Wild Sedge)
+    vec3 oraBase = vec3(0.34, 0.20, 0.06);
+    vec3 oraTip  = vec3(0.82, 0.44, 0.11);
+    vec3 colOrange = mix(oraBase, oraTip, pow(vT, 0.85));
+
+    // Padukan warna hangat kuning keemasan & oranye amber
+    vec3 colWarm = mix(colYellow, colOrange, vWarmType);
+
+    // Warna final helai: hijau dominan dengan hamparan varian kuning & oranye di titik tertentu
+    vec3 col = mix(colGreen, colWarm, vWarm);
+
+    // Gradasi pencahayaan alami helai dari pangkal tanah ke ujung daun
+    col *= (0.86 + vT * 0.26);
+
+    gl_FragColor = vec4(col * uLight, 1.0);
+    #include <fog_fragment>
+  }
+`;
+
+function createGrassMaterial(uRVal, distFadeVal) {
+  return new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+      uCenter:    { value: new THREE.Vector2() },
+      uR:         { value: uRVal },
+      uHeight:    { value: grassHeightTex },
+      uHRange:    { value: new THREE.Vector2(grassHeightTex.hMin, grassHeightTex.hMax) },
+      uTerr:      { value: new THREE.Vector3(T_D, T_HALF, T_W) },
+      uLight:     { value: new THREE.Color(1, 1, 1) },
+      uCamPos:    { value: new THREE.Vector3() },
+      uDistFade:  { value: new THREE.Vector4().copy(distFadeVal) }
+    }]),
+    vertexShader: grassVertexShader,
+    fragmentShader: grassFragmentShader,
+    fog: true,
+    side: THREE.DoubleSide
+  });
+}
+
+// Material rumput dekat: jangkauan 0m hingga 75m (fade-out 62..75m)
+const grassMatNear = createGrassMaterial(65.0, new THREE.Vector4(0.0, 0.0, 62.0, 75.0));
+// Material rumput bukit jauh: TANPA inner fade (uDistFade.x = 0, uDistFade.y = 0), sehingga saat didekati rumput TIDAK AKAN PERNAH MENYUSUT!
+// Fade-out lembut hanya di kejauhan 350m..400m menyatu ke dalam kabut atmosfer.
+const grassMatFar  = createGrassMaterial(180.0, new THREE.Vector4(0.0, 0.0, 350.0, 400.0));
+const grassMat = grassMatNear; // Compatibility alias
+
+const grassFieldNear = new THREE.Mesh(grassBladeGeoNear, grassMatNear);
+grassFieldNear.frustumCulled = false;
+grassFieldNear.userData.isGrass = true;
+scene.add(grassFieldNear);
+
+const grassFieldFar = new THREE.Mesh(grassBladeGeoFar, grassMatFar);
+grassFieldFar.frustumCulled = false;
+grassFieldFar.userData.isGrass = true;
+scene.add(grassFieldFar);
+
+const grassField = grassFieldNear; // Compatibility alias
 
 const _grassDir = new THREE.Vector3();
+
 function updateGrassField() {
-  grassBladeGeo.instanceCount = GRASS_BY_Q[qIdx] || GRASS_MAX;
-  const camGround = terrainY(camera.position.x, camera.position.z);
-  // Rumput tetap dirender penuh saat terbang tinggi (hingga ketinggian 700m)
-  grassField.visible = (camera.position.y - camGround) < 700;
-  if (!grassField.visible) return;
-  camera.getWorldDirection(_grassDir); _grassDir.y = 0;
+  grassBladeGeoNear.instanceCount = GRASS_NEAR_BY_Q[qIdx] || GRASS_MAX_NEAR;
+  grassBladeGeoFar.instanceCount  = GRASS_FAR_BY_Q[qIdx]  || GRASS_MAX_FAR;
+
+  // Rumput SELALU aktif terus (tidak pernah menghilang saat terbang pesawat!)
+  grassFieldNear.visible = true;
+  grassFieldFar.visible  = true;
+
+  // Tentukan titik fokus aktif: saat terbang / naik kendaraan gunakan posisi pesawat (veh.pos), saat jalan kaki gunakan posisi player
+  const isVehicle = (mode !== 'play' && mode !== 'build' && typeof veh !== 'undefined' && veh && veh.pos);
+  const fx = isVehicle ? veh.pos.x : player.x;
+  const fz = isVehicle ? veh.pos.z : player.z;
+  const fy = isVehicle ? veh.pos.y : player.y;
+
+  camera.getWorldDirection(_grassDir);
+  const pitchFactor = clamp(1.0 - Math.max(0.0, -_grassDir.y - 0.75) / 0.25, 0.25, 1.0);
+  _grassDir.y = 0;
   if (_grassDir.lengthSq() < 1e-4) _grassDir.set(0, 0, -1);
   _grassDir.normalize();
-  // Geser pusat area rumput ke depan arah kamera (GRASS_R * 0.50) sehingga menjangkau bukit jauh di depan pemain
-  grassMat.uniforms.uCenter.value.set(
-    camera.position.x + _grassDir.x * GRASS_R * 0.50,
-    camera.position.z + _grassDir.z * GRASS_R * 0.50
+
+  // Pusat rumput dekat: SELALU berpusat tepat di bawah posisi aktif (player saat jalan kaki, pesawat saat terbang)
+  grassMatNear.uniforms.uCenter.value.set(fx, fz);
+
+  // Pusat rumput jauh: digeser 160m ke depan arah pandang kamera
+  const forwardShift = 160.0 * pitchFactor;
+  grassMatFar.uniforms.uCenter.value.set(
+    fx + _grassDir.x * forwardShift,
+    fz + _grassDir.z * forwardShift
   );
-  // Pencahayaan rumput selaras dengan terrain di setiap waktu hari
-  const L = grassMat.uniforms.uLight.value;
-  L.copy(hemi.color).multiplyScalar(hemi.intensity * 0.70);
-  // Saat sore (sun mendekati horizon), intensitas matahari berkurang secara wajar menyamai terrain
-  const sunElevFactor = clamp((Math.max(0.0, SUN_DIR.y) + 0.08) / 0.50, 0.18, 1.0);
-  const sunAmt = sun.intensity * 0.40 * sunElevFactor;
-  L.r += sun.color.r * sunAmt;
-  L.g += sun.color.g * sunAmt;
-  L.b += sun.color.b * sunAmt;
+
+  // Posisi aktif untuk perhitungan pencahayaan & jarak shader
+  grassMatNear.uniforms.uCamPos.value.set(fx, fy, fz);
+  grassMatFar.uniforms.uCamPos.value.set(fx, fy, fz);
+
+  // Pencahayaan rumput selaras dengan terrain di setiap waktu hari (halus tanpa efek sharpen di langit sore)
+  const L = grassMatNear.uniforms.uLight.value;
+  L.copy(hemi.color).multiplyScalar(hemi.intensity * 0.65);
+  const sunElevFactor = clamp((Math.max(0.0, SUN_DIR.y) + 0.08) / 0.50, 0.20, 1.0);
+  const sunAmt = sun.intensity * 0.35 * sunElevFactor;
+  L.r = Math.min(1.22, L.r + sun.color.r * sunAmt);
+  L.g = Math.min(1.22, L.g + sun.color.g * sunAmt);
+  L.b = Math.min(1.22, L.b + sun.color.b * sunAmt);
+
+  grassMatFar.uniforms.uLight.value.copy(L);
 }
 
 const flowerGeo = (function makeFlowerGeo() {
@@ -1110,9 +1337,9 @@ flowerInst.frustumCulled = false;
     if (y > 45) continue;
     groundNormal(x, z, _norm);
     if (_norm.y < 0.85) continue;
-    // Bunga hanya mekar di padang rumput hijau (45% area rumput)
+    // Bunga hanya mekar di padang rumput hijau (area padang rumput)
     const nMeadow = fbm(x * 0.0038 + 14.2, z * 0.0038 + 48.9, 3);
-    if (nMeadow < 0.49) continue;
+    if (nMeadow < 0.47) continue;
 
     const sc = 1.8 + randVeg() * 0.6;   // bunga menyembul di atas rumput rimbun
     _dummyPos.set(x, y - 0.03, z);
@@ -1261,18 +1488,45 @@ const treeData = [];
   const v = new THREE.Vector3();
   const add = (x, z, forcedType = -1) => {
     const y = terrainY(x, z);
-    // Probabilitas 6 varian (pohon palem dihapus):
-    // 0:Deciduous(28%), 1:Pine(26%), 2:Birch(18%), 3:Bush(14%), 4:Baobab(8%), 5:Dead(6%)
-    let tType = forcedType;
-    if (tType < 0) {
-      const p = rand();
-      if (p < 0.28) tType = 0;
-      else if (p < 0.54) tType = 1;
-      else if (p < 0.72) tType = 2;
-      else if (p < 0.86) tType = 3;
-      else if (p < 0.94) tType = 4;
-      else tType = 5;
+    const nMeadow = fbm(x * 0.0038 + 14.2, z * 0.0038 + 48.9, 3);
+    const isTandus = nMeadow < 0.47;
+    const isGunung = y >= 18.0; // Gunung / perbukitan tinggi (y >= 18m)
+
+    let tType;
+    if (isTandus) {
+      // 1. DI DATARAN TANDUS: HANYA BOLEH KAYU RANTING (Type 5: Dead Tree).
+      // Dilarang ada pohon berdaun tumbuh di area tandus!
+      tType = 5;
+    } else {
+      // 2. DI PADANG RUMPUT:
+      // Aturan Khusus Pohon Cemara (Type 1):
+      // - Hanya boleh berada di GUNUNG yang memiliki rumput (isGunung && !isTandus).
+      // - SAMA SEKALI TIDAK BOLEH ADA DI DATARAN (!isGunung)!
+      if (isGunung) {
+        // Di Gunung yang memiliki rumput: dominan cemara (conifer/pine) plus pohon berdaun dataran tinggi
+        if (forcedType >= 0 && forcedType !== 5) {
+          tType = forcedType;
+        } else {
+          const p = rand();
+          if (p < 0.58) tType = 1;       // Pine (Cemara Gunung)
+          else if (p < 0.80) tType = 2;  // Birch
+          else if (p < 0.92) tType = 0;  // Deciduous
+          else tType = 3;                // Bush
+        }
+      } else {
+        // Di Dataran (Lowlands / Plains): CEMARA DILARANG KERAS TUMBUH!
+        if (forcedType >= 0 && forcedType !== 5 && forcedType !== 1) {
+          tType = forcedType;
+        } else {
+          const p = rand();
+          if (p < 0.42) tType = 0;       // Deciduous (Oak rindang dataran)
+          else if (p < 0.70) tType = 2;  // Birch
+          else if (p < 0.88) tType = 3;  // Bush
+          else tType = 4;                // Baobab
+        }
+      }
     }
+
     const s = (tType === 4) ? (1.0 + rand() * 0.4) : (tType === 3 ? 0.7 + rand() * 0.5 : 0.8 + rand() * 0.8);
     const colR = (tType === 4) ? 0.85 * s : (tType === 3 ? 0.5 * s : 0.35 * s);
     treeData.push({
@@ -1293,7 +1547,7 @@ const treeData = [];
     groundNormal(x, z, v);
     if (v.y < 0.76) return false;
 
-    // Spacing rapat 2.8m - 5.2m agar pohon berdekatan, rimbun layaknya hutan lebat dan tidak bertumpuk
+    // Spacing
     const cx = Math.floor(x / OB_CELL), cz = Math.floor(z / OB_CELL);
     for (let dx = -1; dx <= 1; dx++) {
       for (let dz = -1; dz <= 1; dz++) {
@@ -1307,8 +1561,8 @@ const treeData = [];
     return true;
   };
 
-  // 1. Starter trees dekat area spawn & pad (sampel 6 varian)
-  const starterTypes = [0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5];
+  // 1. Starter trees dekat area spawn & pad (semua pohon dataran di padang rumput, tanpa cemara)
+  const starterTypes = [0, 2, 3, 4, 0, 2, 3, 4, 0, 2];
   for (let i = 0; i < starterTypes.length; i++) {
     const a = rand() * TAU, d = 16 + rand() * 16;
     const tx = SITE.x + Math.cos(a) * d, tz = SITE.z + Math.sin(a) * d - 8;
@@ -1321,52 +1575,52 @@ const treeData = [];
     // --- Zona Dekat (Spawn & Crafting Pad) ---
     { x: -28, z: 28, rMin: 0, rMax: 24, count: 75, types: [0, 1, 2, 3] },
     { x: 68, z: -32, rMin: 0, rMax: 46, count: 140, types: [0, 1, 3, 4] },
-    { x: -36, z: -55, rMin: 0, rMax: 38, count: 120, types: [1, 2, 0, 5] },
+    { x: -36, z: -55, rMin: 0, rMax: 38, count: 120, types: [1, 2, 0, 3] },
     { x: -78, z: -10, rMin: 0, rMax: 42, count: 130, types: [0, 1, 4, 3] },
     { x: 92, z: 32, rMin: 0, rMax: 40, count: 120, types: [0, 2, 3, 4] },
-    { x: 26, z: 82, rMin: 0, rMax: 44, count: 130, types: [0, 1, 2, 5] },
+    { x: 26, z: 82, rMin: 0, rMax: 44, count: 130, types: [0, 1, 2, 4] },
     { x: -74, z: 72, rMin: 0, rMax: 42, count: 120, types: [1, 0, 3, 2] },
     { x: 88, z: 88, rMin: 0, rMax: 42, count: 120, types: [0, 1, 2, 4] },
-    { x: -105, z: -85, rMin: 0, rMax: 46, count: 130, types: [1, 2, 5, 0] },
+    { x: -105, z: -85, rMin: 0, rMax: 46, count: 130, types: [1, 2, 3, 0] },
     { x: 125, z: -68, rMin: 0, rMax: 48, count: 130, types: [1, 0, 2, 3] },
 
     // --- Zona Menengah (Jarak 160m - 360m: Lembah, Perbukitan & Rimba Luas) ---
     { x: -220, z: -40, rMin: 0, rMax: 70, count: 130, types: [0, 1, 4, 3] },
     { x: 240, z: 60, rMin: 0, rMax: 70, count: 130, types: [0, 2, 3, 4] },
-    { x: -60, z: -250, rMin: 0, rMax: 70, count: 130, types: [1, 2, 5, 0] },
-    { x: 70, z: 260, rMin: 0, rMax: 70, count: 130, types: [1, 0, 2, 5] },
+    { x: -60, z: -250, rMin: 0, rMax: 70, count: 130, types: [1, 2, 3, 0] },
+    { x: 70, z: 260, rMin: 0, rMax: 70, count: 130, types: [1, 0, 2, 4] },
     { x: -280, z: -240, rMin: 0, rMax: 75, count: 135, types: [0, 1, 2, 3] },
     { x: 290, z: -250, rMin: 0, rMax: 75, count: 135, types: [2, 0, 3, 4] },
     { x: -260, z: 250, rMin: 0, rMax: 75, count: 135, types: [0, 1, 3, 4] },
     { x: 280, z: 260, rMin: 0, rMax: 75, count: 135, types: [1, 2, 0, 4] },
     { x: 0, z: -320, rMin: 0, rMax: 70, count: 125, types: [0, 1, 2, 4] },
-    { x: 0, z: 330, rMin: 0, rMax: 70, count: 125, types: [1, 2, 3, 5] },
-    { x: -330, z: 0, rMin: 0, rMax: 70, count: 125, types: [0, 2, 4, 5] },
+    { x: 0, z: 330, rMin: 0, rMax: 70, count: 125, types: [1, 2, 3, 0] },
+    { x: -330, z: 0, rMin: 0, rMax: 70, count: 125, types: [0, 2, 4, 1] },
     { x: 340, z: 0, rMin: 0, rMax: 70, count: 125, types: [0, 1, 3, 4] },
     { x: -190, z: 210, rMin: 0, rMax: 65, count: 115, types: [1, 0, 2, 3] },
-    { x: 210, z: -190, rMin: 0, rMax: 65, count: 115, types: [0, 2, 4, 5] },
+    { x: 210, z: -190, rMin: 0, rMax: 65, count: 115, types: [0, 2, 4, 1] },
     { x: 190, z: 210, rMin: 0, rMax: 65, count: 115, types: [0, 1, 3, 4] },
-    { x: -210, z: -190, rMin: 0, rMax: 65, count: 115, types: [1, 2, 0, 5] },
+    { x: -210, z: -190, rMin: 0, rMax: 65, count: 115, types: [1, 2, 0, 3] },
 
     // --- Zona Jauh & Belantara Luar (Jarak 400m - 750m: Pegunungan & Rimba Raya) ---
     { x: -520, z: -80, rMin: 0, rMax: 95, count: 145, types: [0, 1, 4, 3] },
     { x: 540, z: 120, rMin: 0, rMax: 95, count: 145, types: [0, 2, 3, 4] },
-    { x: 80, z: -540, rMin: 0, rMax: 95, count: 150, types: [1, 2, 5, 0] },
+    { x: 80, z: -540, rMin: 0, rMax: 95, count: 150, types: [1, 2, 3, 0] },
     { x: -120, z: 550, rMin: 0, rMax: 95, count: 150, types: [1, 0, 3, 2] },
-    { x: -540, z: -520, rMin: 0, rMax: 100, count: 145, types: [1, 2, 5, 0] },
+    { x: -540, z: -520, rMin: 0, rMax: 100, count: 145, types: [1, 2, 3, 0] },
     { x: 550, z: -530, rMin: 0, rMax: 100, count: 145, types: [0, 1, 2, 4] },
     { x: -530, z: 540, rMin: 0, rMax: 100, count: 145, types: [4, 3, 0, 1] },
     { x: 550, z: 550, rMin: 0, rMax: 100, count: 145, types: [0, 1, 2, 4] },
     { x: 0, z: -640, rMin: 0, rMax: 95, count: 135, types: [0, 1, 2, 3] },
-    { x: 0, z: 660, rMin: 0, rMax: 95, count: 135, types: [1, 2, 4, 5] },
+    { x: 0, z: 660, rMin: 0, rMax: 95, count: 135, types: [1, 2, 4, 0] },
     { x: -660, z: 0, rMin: 0, rMax: 95, count: 135, types: [0, 2, 3, 4] },
-    { x: 660, z: 0, rMin: 0, rMax: 95, count: 135, types: [1, 0, 3, 5] },
+    { x: 660, z: 0, rMin: 0, rMax: 95, count: 135, types: [1, 0, 3, 2] },
     { x: -420, z: -390, rMin: 0, rMax: 90, count: 130, types: [0, 1, 4, 2] },
     { x: 430, z: -400, rMin: 0, rMax: 90, count: 130, types: [1, 2, 3, 0] },
-    { x: -410, z: 430, rMin: 0, rMax: 90, count: 130, types: [0, 3, 4, 5] },
+    { x: -410, z: 430, rMin: 0, rMax: 90, count: 130, types: [0, 3, 4, 1] },
     { x: 420, z: 440, rMin: 0, rMax: 90, count: 130, types: [1, 0, 2, 4] },
     { x: -720, z: -360, rMin: 0, rMax: 95, count: 120, types: [0, 1, 2, 3] },
-    { x: 730, z: -350, rMin: 0, rMax: 95, count: 120, types: [2, 0, 4, 5] },
+    { x: 730, z: -350, rMin: 0, rMax: 95, count: 120, types: [2, 0, 4, 1] },
     { x: -360, z: 720, rMin: 0, rMax: 95, count: 120, types: [1, 3, 4, 0] },
     { x: 370, z: 730, rMin: 0, rMax: 95, count: 120, types: [0, 1, 2, 4] }
   ];
@@ -1394,6 +1648,18 @@ const treeData = [];
     if (isValidTreePos(x, z)) {
       add(x, z);
       ambPlaced++;
+    }
+  }
+
+  // 4. Sebaran kayu ranting alami khusus di dataran tandus / gersang (280 kayu ranting)
+  let deadPlaced = 0, deadTries = 0;
+  while (deadPlaced < 280 && deadTries++ < 7000) {
+    const x = (rand() * 2 - 1) * (T_HALF - 40);
+    const z = (rand() * 2 - 1) * (T_HALF - 40);
+    const nMeadow = fbm(x * 0.0038 + 14.2, z * 0.0038 + 48.9, 3);
+    if (nMeadow < 0.45 && isValidTreePos(x, z)) {
+      add(x, z, 5);
+      deadPlaced++;
     }
   }
 })();
@@ -3828,7 +4094,7 @@ function getAxis() {
   return m < .12 ? { x: 0, y: 0 } : { x, y };
 }
 let toastTimer = 0;
-function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.opacity = 1; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.opacity = 0, 1800); }
+function toast(msg) { /* Semua notifikasi dalam game dinonaktifkan sepenuhnya */ return; }
 
 // Joystick virtual
 const joyBase = $('joyBase'), joyKnob = $('joyKnob'), JR = 35;
@@ -4368,8 +4634,17 @@ function updatePlayer(dt) {
   const moving = mag > 0 && !chop.active;
   const walkSpeedMult = sprinting ? 1.6 : 1.0;
   player.walkPh += dt * 10 * (moving ? mag * walkSpeedMult : 0);
-  if (sprinting && player.grounded && Math.random() < 0.28) {
-    burst(player.x, player.y, player.z, 2, C_DUST, C_DUST, 1, .4, .2);
+  // Bekas debu saat sprint: HANYA muncul ketika pemain berada di area tandus saja
+  if (sprinting && player.grounded) {
+    const nMeadow = fbm(player.x * 0.0038 + 14.2, player.z * 0.0038 + 48.9, 3);
+    const isTandus = nMeadow < 0.47;
+    if (isTandus && Math.random() < 0.45) {
+      // Mengepulkan bekas debu tanah gersang di jejak kaki pemain
+      const footSide = Math.sin(player.walkPh) > 0 ? 0.22 : -0.22;
+      const footX = player.x - Math.cos(player.yaw) * footSide;
+      const footZ = player.z + Math.sin(player.yaw) * footSide;
+      burst(footX, gy + 0.05, footZ, 2, C_DUST, [0.48, 0.38, 0.26], 1.2, 0.5, 0.4);
+    }
   }
   const sw = moving ? Math.sin(player.walkPh) * .8 : 0;
   legL.rotation.x = sw; legR.rotation.x = -sw; armL.rotation.x = -sw * .9; armR.rotation.x = chop.active ? armR.rotation.x : sw * .9 - .2;
@@ -5768,7 +6043,8 @@ const TOD_TARGETS = { dawn: 0.25, day: 0.50, dusk: 0.75, night: 0.00 };
 // Palet 4 Fase Waktu (Pagi, Siang, Sore, Malam)
 const P_DAWN  = { sky: 0xf59873, fog: 0xf6a788, sun: 0xffd2a0, hemiS: 0xffd0b0, hemiG: 0x556345, sunI: 0.75, hemiI: 0.80, night: 0.0 };
 const P_DAY   = { sky: 0x9ed4f8, fog: 0x9ed4f8, sun: 0xfff0d0, hemiS: 0xd6edff, hemiG: 0x587840, sunI: 0.70, hemiI: 0.75, night: 0.0 };
-const P_DUSK  = { sky: 0xd6421c, fog: 0xce4c26, sun: 0xff440e, hemiS: 0xe85d26, hemiG: 0x483420, sunI: 0.78, hemiI: 0.72, night: 0.0 };
+// Sore hari bernuansa golden-hour hangat alami (menghilangkan kontras kasar & efek sharpen pada mesh/rumput)
+const P_DUSK  = { sky: 0xdc6b45, fog: 0xd67652, sun: 0xffa055, hemiS: 0xe08456, hemiG: 0x5c4832, sunI: 0.62, hemiI: 0.76, night: 0.0 };
 // Malam hari diterangi cahaya bulan keperakan (moonlight) agar dataran & pegunungan terlihat jelas dan tidak hitam pekat
 const P_NIGHT = { sky: 0x091424, fog: 0x0c172a, sun: 0x98bfe8, hemiS: 0x223652, hemiG: 0x142232, sunI: 0.38, hemiI: 0.46, night: 1.0 };
 
@@ -5905,7 +6181,7 @@ function updateWeather(dt) {
 
   // Warna bola matahari: berangsur-angsur menjadi merah jingga saat senja
   if (duskFactor > 0.001) {
-    sunSprite.material.color.copy(pal.sun).lerp(new THREE.Color(0xff2200), duskFactor * 0.88);
+    sunSprite.material.color.copy(pal.sun).lerp(new THREE.Color(0xff4411), duskFactor * 0.70);
   } else {
     sunSprite.material.color.copy(pal.sun);
   }
