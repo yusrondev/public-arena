@@ -17,13 +17,131 @@
   body[data-mode=build] .play-only { display:none !important; }
   body:not([data-mode=drive]) .drive-only { display:none !important; }
   body[data-mode=drive] .nodrive { display:none !important; }
-  .rbtn { position:absolute; border-radius:9999px; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    background:rgba(20,40,30,.55); border:3px solid rgba(255,255,255,.75); color:#fff; font-weight:600;
-    pointer-events:auto; transition:transform .08s, background .15s; touch-action:none; }
-  .rbtn:active, .rbtn.down { transform:scale(.88); background:rgba(255,255,255,.35); }
-  #btnGlideDown.fast-active { background:linear-gradient(135deg,rgba(2,132,199,0.95),rgba(14,165,233,1)) !important; border-color:#fff !important; box-shadow:0 0 25px rgba(56,189,248,0.9), 0 0 10px #fff !important; transform:scale(0.92); }
-  .rbtn .ico { line-height:1; display:flex; align-items:center; justify-content:center; }
-  .rbtn .lbl { font-size:11px; margin-top:2px; text-shadow:0 1px 2px #000; }
+  /* Base Action Button Styles with Smooth Ergonomic Transitions */
+  .rbtn {
+    position: absolute;
+    border-radius: 9999px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 30, 25, 0.72);
+    border: 2.5px solid rgba(255, 255, 255, 0.75);
+    color: #fff;
+    font-weight: 600;
+    pointer-events: auto;
+    transition: transform .08s ease, background .22s ease, border-color .22s ease, box-shadow .22s ease, right .24s cubic-bezier(0.16, 1, 0.3, 1), bottom .24s cubic-bezier(0.16, 1, 0.3, 1), width .24s cubic-bezier(0.16, 1, 0.3, 1), height .24s cubic-bezier(0.16, 1, 0.3, 1), opacity .2s ease;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .rbtn:active, .rbtn.down {
+    transform: scale(.88) !important;
+    filter: brightness(1.22);
+  }
+  .rbtn .ico { line-height: 1; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .rbtn .lbl { font-size: 11px; margin-top: 2px; text-shadow: 0 1px 3px rgba(0,0,0,0.9); font-weight: 700; pointer-events: none; letter-spacing: 0.2px; }
+
+  /* Mode: PLAY (Idle / Berjalan / Bertani) */
+  body[data-mode="play"] #btnJump {
+    right: 12px; bottom: 12px; width: 76px; height: 76px;
+    background: radial-gradient(circle at 35% 35%, rgba(16,185,129,0.45), rgba(6,78,59,0.85));
+    border-color: rgba(110,231,183,0.9);
+    box-shadow: 0 4px 18px rgba(16,185,129,0.4), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+  body[data-mode="play"] #btnSprint {
+    right: 16px; bottom: 98px; width: 62px; height: 62px;
+    background: radial-gradient(circle at 35% 35%, rgba(245,158,11,0.4), rgba(120,53,15,0.8));
+    border-color: rgba(252,211,77,0.85);
+    box-shadow: 0 3px 14px rgba(245,158,11,0.3), inset 0 1px 0 rgba(255,255,255,0.35);
+  }
+  body[data-mode="play"] #btnCraft {
+    right: 16px; bottom: 170px; width: 62px; height: 62px;
+    background: radial-gradient(circle at 35% 35%, rgba(59,130,246,0.4), rgba(30,58,138,0.8));
+    border-color: rgba(147,197,253,0.85);
+    box-shadow: 0 3px 14px rgba(59,130,246,0.3), inset 0 1px 0 rgba(255,255,255,0.35);
+  }
+  body[data-mode="play"] #btnChop {
+    right: 100px; bottom: 12px; width: 68px; height: 68px;
+    background: radial-gradient(circle at 35% 35%, rgba(217,119,6,0.5), rgba(120,53,15,0.85));
+    border-color: rgba(251,191,36,0.9);
+    box-shadow: 0 4px 16px rgba(217,119,6,0.4), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+  body[data-mode="play"] #btnAct {
+    right: 100px; bottom: 12px; width: 68px; height: 68px;
+    background: linear-gradient(135deg, rgba(14,165,233,0.88), rgba(3,105,161,0.95));
+    border-color: rgba(186,230,253,0.95);
+    box-shadow: 0 0 22px rgba(14,165,233,0.55), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+  body[data-mode="play"] #btnAct.stacked {
+    bottom: 92px !important;
+  }
+
+  /* Mode: DRIVE (Naik Kendaraan / Pesawat Tempur) */
+  body[data-mode="drive"] #btnChop {
+    right: 12px; bottom: 12px; width: 84px; height: 84px;
+    background: linear-gradient(135deg, rgba(249,115,22,0.95), rgba(220,38,38,0.98)) !important;
+    border: 3.5px solid rgba(254,215,170,0.95) !important;
+    box-shadow: 0 0 28px rgba(249,115,22,0.75), inset 0 2px 4px rgba(255,255,255,0.5) !important;
+  }
+  body[data-mode="drive"] #btnChop .lbl {
+    font-size: 13px !important; font-weight: 800 !important; letter-spacing: 1px !important;
+  }
+  body[data-mode="drive"] #btnAct {
+    right: 18px; bottom: 110px; width: 66px; height: 66px;
+    background: linear-gradient(135deg, rgba(71,85,105,0.9), rgba(30,41,59,0.96)) !important;
+    border: 2.5px solid rgba(203,213,225,0.85) !important;
+    box-shadow: 0 4px 16px rgba(15,23,42,0.6), inset 0 1px 0 rgba(255,255,255,0.3) !important;
+  }
+  body[data-mode="drive"] #btnShoot {
+    right: 108px; bottom: 16px; width: 74px; height: 74px;
+    background: linear-gradient(135deg, rgba(225,29,72,0.92), rgba(159,18,57,0.98)) !important;
+    border: 3px solid rgba(254,205,211,0.9) !important;
+    box-shadow: 0 0 24px rgba(225,29,72,0.65), inset 0 1px 2px rgba(255,255,255,0.4) !important;
+  }
+  body[data-mode="drive"] #btnShoot .lbl {
+    font-size: 10px !important; font-weight: 800 !important; letter-spacing: 0.8px !important;
+  }
+  body[data-mode="drive"] #btnMissile {
+    right: 108px; bottom: 102px; width: 74px; height: 74px;
+    background: linear-gradient(135deg, rgba(217,119,6,0.92), rgba(180,83,9,0.98)) !important;
+    border: 3px solid rgba(253,230,138,0.9) !important;
+    box-shadow: 0 0 24px rgba(245,158,11,0.65), inset 0 1px 2px rgba(255,255,255,0.4) !important;
+  }
+  body[data-mode="drive"] #btnMissile .lbl {
+    font-size: 10px !important; font-weight: 800 !important; letter-spacing: 0.8px !important;
+  }
+  body[data-mode="drive"] #btnMissile.solo {
+    bottom: 16px !important;
+  }
+
+  /* Mode: BUILD (Merakit Kendaraan) */
+  body[data-mode="build"] #btnCraft {
+    right: 14px; bottom: 14px; width: 84px; height: 84px;
+    background: linear-gradient(135deg, rgba(16,185,129,0.92), rgba(5,150,105,0.96)) !important;
+    border: 3px solid rgba(167,243,208,0.95) !important;
+    box-shadow: 0 0 26px rgba(16,185,129,0.65), inset 0 1px 0 rgba(255,255,255,0.5) !important;
+  }
+  body[data-mode="build"] #btnCraft .lbl {
+    font-size: 13px !important; font-weight: 800 !important;
+  }
+
+  /* Parasut Glide Down */
+  #btnGlideDown {
+    right: 12px; bottom: 12px; width: 84px; height: 84px;
+    background: linear-gradient(135deg, rgba(2,132,199,0.88), rgba(3,105,161,0.96));
+    border: 3px solid rgba(125,211,252,0.9);
+    box-shadow: 0 0 22px rgba(56,189,248,0.5);
+  }
+  #btnGlideDown.fast-active {
+    background: linear-gradient(135deg, rgba(2,132,199,0.98), rgba(14,165,233,1)) !important;
+    border-color: #fff !important;
+    box-shadow: 0 0 28px rgba(56,189,248,0.95), 0 0 10px #fff !important;
+    transform: scale(0.92);
+  }
+
   .slot { width:62px; height:62px; border-radius:10px; background:rgba(0,0,0,.35); border:3px solid transparent; color:#fff;
     display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:10px; line-height:1.1; text-align:center; }
   .slot .ico { font-size:24px; display:flex; align-items:center; justify-content:center; margin-bottom:2px; }
@@ -265,65 +383,70 @@
   </div>
 
   <!-- Tombol aksi (kanan) -->
-  <div class="absolute" style="right:12px;bottom:12px;width:250px;height:250px;pointer-events:none">
-    <button id="btnSprint" class="rbtn play-only nodrive" style="right:8px;bottom:178px;width:64px;height:64px">
+  <div class="absolute" style="right:12px;bottom:12px;width:240px;height:260px;pointer-events:none">
+    <button id="btnSprint" class="rbtn play-only nodrive">
       <span class="ico">
-        <svg class="w-7 h-7 text-amber-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M7 21l3-6 2 2v5"/><path d="M16 11l-3 4-2-2 3-4 4 1"/><path d="M6 13l3-2 2 1"/></svg>
+        <svg class="w-7 h-7 text-amber-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="4" r="2" fill="currentColor"/><path d="M7 20l3.5-5 2.5 2 4-6"/><path d="M12 11l2-3.5-3-1.5-3.5 2"/><path d="M3 13h4M2 17h5"/></svg>
       </span>
       <span class="lbl">Lari</span>
     </button>
-    <button id="btnJump" class="rbtn play-only nodrive" style="right:8px;bottom:104px;width:66px;height:66px">
+    <button id="btnJump" class="rbtn play-only nodrive">
       <span class="ico">
-        <svg class="w-7 h-7 text-emerald-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        <svg class="w-8 h-8 text-emerald-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 12 6 7 11"/><polyline points="17 17 12 12 7 17"/><line x1="6" y1="21" x2="18" y2="21" stroke-width="2.5"/></svg>
       </span>
       <span class="lbl">Lompat</span>
     </button>
-    <button id="btnMissile" class="rbtn play-only" style="right:180px;bottom:172px;width:72px;height:72px;display:none;background:linear-gradient(135deg,rgba(217,119,6,0.85),rgba(180,83,9,0.95));border-color:rgba(251,191,36,0.85);box-shadow:0 0 18px rgba(245,158,11,0.5)">
+    <button id="btnMissile" class="rbtn play-only" style="display:none">
       <span class="ico">
-        <svg class="w-7 h-7 text-amber-200" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2.5l-3 4.5v10l-2 1.5v2l5-2 5 2v-2l-2-1.5V7l-3-4.5z"/>
+        <svg class="w-8 h-8 text-amber-100" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2c-1.5 2-2.5 5.5-2.5 9.5 0 2 .5 4 1 5.5l-2.5 1.5v2l4-1.5 4 1.5v-2l-2.5-1.5c.5-1.5 1-3.5 1-5.5C14.5 7.5 13.5 4 12 2z"/>
+          <circle cx="12" cy="7" r="1" fill="#fef08a"/>
+          <path d="M10 20.5l2 2.5 2-2.5z" fill="#f97316"/>
         </svg>
       </span>
-      <span class="lbl font-bold tracking-wider text-[9px]">RUDAL</span>
+      <span class="lbl">RUDAL</span>
       <div id="missileCdOverlay" class="absolute inset-0 rounded-full bg-black/65 flex items-center justify-center font-bold text-sm text-amber-300 hidden">5.0s</div>
     </button>
-    <button id="btnShoot" class="rbtn play-only" style="right:180px;bottom:94px;width:72px;height:72px;display:none;background:linear-gradient(135deg,rgba(225,29,72,0.85),rgba(159,18,57,0.95));border-color:rgba(251,113,133,0.85);box-shadow:0 0 18px rgba(225,29,72,0.5)">
+    <button id="btnShoot" class="rbtn play-only" style="display:none">
       <span class="ico">
-        <svg class="w-7 h-7 text-rose-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/>
-          <line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/>
-          <circle cx="12" cy="12" r="3"/>
+        <svg class="w-8 h-8 text-rose-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9" stroke-width="1.8" stroke-dasharray="3 2"/>
+          <circle cx="12" cy="12" r="4" fill="rgba(244,63,94,0.35)"/>
+          <line x1="12" y1="2" x2="12" y2="6" stroke-width="2.5"/>
+          <line x1="12" y1="18" x2="12" y2="22" stroke-width="2.5"/>
+          <line x1="2" y1="12" x2="6" y2="12" stroke-width="2.5"/>
+          <line x1="18" y1="12" x2="22" y2="12" stroke-width="2.5"/>
+          <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
         </svg>
       </span>
-      <span class="lbl font-bold tracking-wider">TEMBAK</span>
+      <span class="lbl">TEMBAK</span>
     </button>
-    <button id="btnChop" class="rbtn play-only" style="right:100px;bottom:86px;width:70px;height:70px">
+    <button id="btnChop" class="rbtn play-only" style="display:none">
       <span id="chopIco" class="ico">
-        <svg class="w-7 h-7 text-amber-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4l6 6-3 3-6-6 3-3z"/><path d="M5 21l8-8"/><path d="M13 3l2 2"/></svg>
+        <svg class="w-7 h-7 text-amber-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4l6 6-3 3-6-6 3-3z" fill="rgba(251,191,36,0.3)"/><path d="M5 21l8-8"/><path d="M13 3l2 2"/></svg>
       </span>
       <span id="chopLbl" class="lbl">Tebang</span>
     </button>
-    <button id="btnAct" class="rbtn play-only" style="right:104px;bottom:6px;width:70px;height:70px">
+    <button id="btnAct" class="rbtn play-only" style="display:none">
       <span id="actIco" class="ico">
-        <svg class="w-7 h-7 text-rose-300" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5s3 3.5 3 8.5c1.5.5 3.5 2 4.5 4.5-1.5 0-3-.5-4.5-1-.5 2-1.5 3.5-3 4.5-1.5-1-2.5-2.5-3-4.5-1.5.5-3 1-4.5 1 1-2.5 3-4 4.5-4.5 0-5 3-8.5 3-8.5zM12 11a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/></svg>
+        <svg class="w-7 h-7 text-cyan-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 5h6l-3 4 2 7-6-3-6 3 2-7-3-4h6z" fill="rgba(56,189,248,0.35)"/><polyline points="9 19 12 16 15 19" stroke-width="2.5"/></svg>
       </span>
-      <span id="actLbl" class="lbl">Interaksi</span>
+      <span id="actLbl" class="lbl">Naik</span>
     </button>
-    <button id="btnCraft" class="rbtn" style="right:0;bottom:0;width:92px;height:92px">
+    <button id="btnCraft" class="rbtn">
       <span id="craftIco" class="ico">
-        <svg class="w-9 h-9 text-amber-300" viewBox="0 0 24 24" fill="currentColor"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6-9.6 9.6a1 1 0 0 0 0 1.4l1 1a1 1 0 0 0 1.4 0l9.6-9.6 1.6 1.6a1 1 0 0 0 1.4 0l1.6-1.6a1 1 0 0 0 0-1.4l-7.2-7.2a1 1 0 0 0-1.4 0z"/></svg>
+        <svg class="w-7 h-7 text-sky-200" viewBox="0 0 24 24" fill="currentColor"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6-9.6 9.6a1 1 0 0 0 0 1.4l1 1a1 1 0 0 0 1.4 0l9.6-9.6 1.6 1.6a1 1 0 0 0 1.4 0l1.6-1.6a1 1 0 0 0 0-1.4l-7.2-7.2a1 1 0 0 0-1.4 0z"/></svg>
       </span>
-      <span id="craftLbl" class="lbl text-sm">Craft</span>
+      <span id="craftLbl" class="lbl">Craft</span>
     </button>
-    <button id="btnGlideDown" class="rbtn" style="right:8px;bottom:16px;width:84px;height:84px;display:none;background:linear-gradient(135deg,rgba(2,132,199,0.85),rgba(3,105,161,0.95));border:3px solid rgba(125,211,252,0.85);box-shadow:0 0 20px rgba(56,189,248,0.45)">
+    <button id="btnGlideDown" class="rbtn" style="display:none">
       <span class="ico">
-        <svg class="w-8 h-8 text-sky-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3v13M6 11l6 6 6-6"/>
-          <line x1="5" y1="21" x2="19" y2="21"/>
+        <svg class="w-8 h-8 text-sky-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v13M6 10l6 6 6-6"/>
+          <line x1="4" y1="21" x2="20" y2="21" stroke-width="2.5"/>
         </svg>
       </span>
-      <span class="lbl font-bold tracking-wide">Turun</span>
+      <span class="lbl">Turun</span>
     </button>
   </div>
 
@@ -2292,14 +2415,13 @@ function syncVehicleAfterDamage() {
   parts.forEach(p => {
     if (p.type === 'gun') veh.guns.push(new THREE.Vector3(p.i - veh.c.x, (p.j + .5) - veh.c.y, p.k - veh.c.z - 0.95));
   });
-  if ($('btnShoot')) $('btnShoot').style.display = (mode === 'drive' && veh.guns.length > 0) ? 'flex' : 'none';
-
-  // Rebuild missiles
-  veh.missiles.length = 0;
-  parts.forEach(p => {
-    if (p.type === 'missile') veh.missiles.push(new THREE.Vector3(p.i - veh.c.x, (p.j + .5) - veh.c.y, p.k - veh.c.z - 0.8));
-  });
-  if ($('btnMissile')) $('btnMissile').style.display = (mode === 'drive' && veh.missiles.length > 0) ? 'flex' : 'none';
+  const hasGuns = (mode === 'drive' && veh.guns.length > 0);
+  const hasMissiles = (mode === 'drive' && veh.missiles.length > 0);
+  if ($('btnShoot')) $('btnShoot').style.display = hasGuns ? 'flex' : 'none';
+  if ($('btnMissile')) {
+    $('btnMissile').style.display = hasMissiles ? 'flex' : 'none';
+    $('btnMissile').classList.toggle('solo', !hasGuns);
+  }
 
   // Rebuild lights
   syncVehicleLights();
@@ -2826,8 +2948,13 @@ function prepareVehicle() {
       veh.missiles.push(new THREE.Vector3(p.i - veh.c.x, (p.j + .5) - veh.c.y, p.k - veh.c.z - 0.8));
     }
   });
-  veh.missileCd = 0;
-  if ($('btnMissile')) $('btnMissile').style.display = (mode === 'drive' && veh.missiles.length > 0) ? 'flex' : 'none';
+  const hasGuns = (mode === 'drive' && veh.guns && veh.guns.length > 0);
+  const hasMissiles = (mode === 'drive' && veh.missiles.length > 0);
+  if ($('btnShoot')) $('btnShoot').style.display = hasGuns ? 'flex' : 'none';
+  if ($('btnMissile')) {
+    $('btnMissile').style.display = hasMissiles ? 'flex' : 'none';
+    $('btnMissile').classList.toggle('solo', !hasGuns);
+  }
 
   syncVehicleLights();
 
@@ -3487,12 +3614,14 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 /* ---------- Mode switching & SVG Icons ---------- */
 const SVG_ICONS = {
-  axe: '<svg class="w-7 h-7 text-amber-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4l6 6-3 3-6-6 3-3z"/><path d="M5 21l8-8"/><path d="M13 3l2 2"/></svg>',
-  fire: '<svg class="w-7 h-7 text-orange-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c-.5 2.5-3 5-3 8 0 3.3 2.7 6 6 6s6-2.7 6-6c0-4-3.5-6.5-4-9-1 2-2.5 3-3.5 3-1 0-1.5-1-1.5-2z"/></svg>',
-  rocket: '<svg class="w-7 h-7 text-rose-300" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5s3 3.5 3 8.5c1.5.5 3.5 2 4.5 4.5-1.5 0-3-.5-4.5-1-.5 2-1.5 3.5-3 4.5-1.5-1-2.5-2.5-3-4.5-1.5.5-3 1-4.5 1 1-2.5 3-4 4.5-4.5 0-5 3-8.5 3-8.5zM12 11a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/></svg>',
-  down: '<svg class="w-7 h-7 text-sky-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>',
-  hammer: '<svg class="w-9 h-9 text-amber-300" viewBox="0 0 24 24" fill="currentColor"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6-9.6 9.6a1 1 0 0 0 0 1.4l1 1a1 1 0 0 0 1.4 0l9.6-9.6 1.6 1.6a1 1 0 0 0 1.4 0l1.6-1.6a1 1 0 0 0 0-1.4l-7.2-7.2a1 1 0 0 0-1.4 0z"/></svg>',
-  check: '<svg class="w-9 h-9 text-emerald-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+  axe: '<svg class="w-7 h-7 text-amber-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4l6 6-3 3-6-6 3-3z" fill="rgba(251,191,36,0.3)"/><path d="M5 21l8-8"/><path d="M13 3l2 2"/></svg>',
+  fire: '<svg class="w-8 h-8 text-yellow-100" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.5C10 5 6.5 8 6.5 12.5c0 4.14 3.36 7.5 7.5 7.5s7.5-3.36 7.5-7.5c0-4.5-3.5-7.5-5.5-11-.4 2.2-1.6 3.5-3 3.5-1.5 0-2.3-1.8-2.3-3.5z"/><path d="M12 12c-1.4 0-2.5 1.4-2.5 3 0 1.7 1.1 3 2.5 3s2.5-1.3 2.5-3c0-1.6-1.1-3-2.5-3z" fill="#fff"/></svg>',
+  board: '<svg class="w-7 h-7 text-cyan-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 5h6l-3 4 2 7-6-3-6 3 2-7-3-4h6z" fill="rgba(56,189,248,0.35)"/><polyline points="9 19 12 16 15 19" stroke-width="2.5"/></svg>',
+  eject: '<svg class="w-7 h-7 text-slate-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a8 8 0 0 0-8 8c0 1.5 3 2 4 2 2 0 3-1.5 4-1.5s2 1.5 4 1.5c1 0 4-.5 4-2a8 8 0 0 0-8-8z" fill="rgba(203,213,225,0.3)"/><path d="M4 11l8 8 8-8"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>',
+  rocket: '<svg class="w-7 h-7 text-cyan-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 5h6l-3 4 2 7-6-3-6 3 2-7-3-4h6z" fill="rgba(56,189,248,0.35)"/><polyline points="9 19 12 16 15 19" stroke-width="2.5"/></svg>',
+  down: '<svg class="w-7 h-7 text-slate-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a8 8 0 0 0-8 8c0 1.5 3 2 4 2 2 0 3-1.5 4-1.5s2 1.5 4 1.5c1 0 4-.5 4-2a8 8 0 0 0-8-8z" fill="rgba(203,213,225,0.3)"/><path d="M4 11l8 8 8-8"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>',
+  hammer: '<svg class="w-7 h-7 text-sky-200" viewBox="0 0 24 24" fill="currentColor"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6-9.6 9.6a1 1 0 0 0 0 1.4l1 1a1 1 0 0 0 1.4 0l9.6-9.6 1.6 1.6a1 1 0 0 0 1.4 0l1.6-1.6a1 1 0 0 0 0-1.4l-7.2-7.2a1 1 0 0 0-1.4 0z"/></svg>',
+  check: '<svg class="w-8 h-8 text-emerald-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
 };
 function setMode(m) {
   mode = m; document.body.dataset.mode = m;
@@ -3508,10 +3637,15 @@ function setMode(m) {
   $('craftIco').innerHTML = m === 'build' ? SVG_ICONS.check : SVG_ICONS.hammer;
   $('chopIco').innerHTML = m === 'drive' ? SVG_ICONS.fire : SVG_ICONS.axe;
   $('chopLbl').textContent = m === 'drive' ? 'GAS' : 'Tebang';
-  $('actIco').innerHTML = m === 'drive' ? SVG_ICONS.down : SVG_ICONS.rocket;
-  $('actLbl').textContent = m === 'drive' ? 'Turun' : 'Interaksi';
-  if ($('btnShoot')) $('btnShoot').style.display = (m === 'drive' && veh.guns && veh.guns.length > 0) ? 'flex' : 'none';
-  if ($('btnMissile')) $('btnMissile').style.display = (m === 'drive' && veh.missiles && veh.missiles.length > 0) ? 'flex' : 'none';
+  $('actIco').innerHTML = m === 'drive' ? SVG_ICONS.eject : SVG_ICONS.board;
+  $('actLbl').textContent = m === 'drive' ? 'Turun' : 'Naik';
+  const hasGuns = (m === 'drive' && veh.guns && veh.guns.length > 0);
+  const hasMissiles = (m === 'drive' && veh.missiles && veh.missiles.length > 0);
+  if ($('btnShoot')) $('btnShoot').style.display = hasGuns ? 'flex' : 'none';
+  if ($('btnMissile')) {
+    $('btnMissile').style.display = hasMissiles ? 'flex' : 'none';
+    $('btnMissile').classList.toggle('solo', !hasGuns);
+  }
   joy.x = joy.y = 0; joyKnob.style.transform = 'translate(-50%,-50%)';
 }
 function toggleCraft() {
@@ -5525,8 +5659,13 @@ function update(dt) {
     if (btnGlideEl) btnGlideEl.style.display = 'none';
     $('btnSprint').style.display = (mode === 'play') ? 'flex' : 'none';
     $('btnJump').style.display = (mode === 'play') ? 'flex' : 'none';
-    if ($('btnShoot')) $('btnShoot').style.display = (mode === 'drive' && veh.guns && veh.guns.length > 0) ? 'flex' : 'none';
-    if ($('btnMissile')) $('btnMissile').style.display = (mode === 'drive' && veh.missiles && veh.missiles.length > 0) ? 'flex' : 'none';
+    const hasGuns = (mode === 'drive' && veh.guns && veh.guns.length > 0);
+    const hasMissiles = (mode === 'drive' && veh.missiles && veh.missiles.length > 0);
+    if ($('btnShoot')) $('btnShoot').style.display = hasGuns ? 'flex' : 'none';
+    if ($('btnMissile')) {
+      $('btnMissile').style.display = hasMissiles ? 'flex' : 'none';
+      $('btnMissile').classList.toggle('solo', !hasGuns);
+    }
 
     // Tombol Craft selalu siap digunakan kapan saja dan di mana saja!
     $('btnCraft').style.display = (mode === 'play' || mode === 'build') ? 'flex' : 'none';
@@ -5556,6 +5695,19 @@ function update(dt) {
     const canInteract = (mode === 'drive') || (mode === 'play' && veh.sim && parts.size > 0 && Math.hypot(player.x - veh.pos.x, player.z - veh.pos.z) <= 9);
     $('btnAct').style.display = canInteract ? 'flex' : 'none';
     $('btnAct').classList.toggle('near', mode === 'play' && canInteract);
+    if (mode === 'play') {
+      $('btnAct').classList.toggle('stacked', canChop);
+      if ($('actLbl').textContent !== 'Naik') {
+        $('actLbl').textContent = 'Naik';
+        $('actIco').innerHTML = SVG_ICONS.board;
+      }
+    } else if (mode === 'drive') {
+      $('btnAct').classList.remove('stacked');
+      if ($('actLbl').textContent !== 'Turun') {
+        $('actLbl').textContent = 'Turun';
+        $('actIco').innerHTML = SVG_ICONS.eject;
+      }
+    }
   }
 }
 function loop(now) {
