@@ -2260,7 +2260,7 @@ function syncVehicleAfterDamage() {
     }
   });
   if (!parts.size) veh.corners.push(new THREE.Vector3(0, -0.5, 0));
-  let maxR = 1.4;
+  let maxR = 0.55;
   for (const c of veh.corners) {
     const d = Math.hypot(c.x, c.z);
     if (d > maxR) maxR = d;
@@ -2305,27 +2305,29 @@ function syncVehicleAfterDamage() {
   syncVehicleLights();
 }
 
-function damageAircraftAtPoint(hitPos, impactSpeed, forceDir) {
+function damageAircraftAtPoint(hitPos, impactSpeed, forceDir, targetKey = null) {
   if (mode !== 'drive' || !parts.size) return;
   if (veh.damageCd > 0) return;
-  veh.damageCd = 0.45; // Cooldown aman agar part tidak hancur sekaligus
+  veh.damageCd = 0.35; // Cooldown aman agar part tidak hancur sekaligus
 
-  let closestKey = null;
-  let minDistSq = Infinity;
-  const _invQuat = veh.quat.clone().invert();
-  const localHit = hitPos.clone().sub(veh.pos).applyQuaternion(_invQuat).add(veh.c);
+  let closestKey = (targetKey && parts.has(targetKey)) ? targetKey : null;
+  if (!closestKey) {
+    let minDistSq = Infinity;
+    const _invQuat = veh.quat.clone().invert();
+    const localHit = hitPos.clone().sub(veh.pos).applyQuaternion(_invQuat).add(veh.c);
 
-  parts.forEach((p, key) => {
-    const px = p.i;
-    const py = p.j + 0.5;
-    const pz = p.k;
-    const dx = localHit.x - px, dy = localHit.y - py, dz = localHit.z - pz;
-    const dSq = dx * dx + dy * dy + dz * dz;
-    if (dSq < minDistSq) {
-      minDistSq = dSq;
-      closestKey = key;
-    }
-  });
+    parts.forEach((p, key) => {
+      const px = p.i;
+      const py = p.j + 0.5;
+      const pz = p.k;
+      const dx = localHit.x - px, dy = localHit.y - py, dz = localHit.z - pz;
+      const dSq = dx * dx + dy * dy + dz * dz;
+      if (dSq < minDistSq) {
+        minDistSq = dSq;
+        closestKey = key;
+      }
+    });
+  }
 
   if (!closestKey) return;
   const p = parts.get(closestKey);
@@ -2782,7 +2784,7 @@ function prepareVehicle() {
   });
   if (!parts.size) veh.corners.push(new THREE.Vector3(0, -0.5, 0));
 
-  let maxR = 1.4;
+  let maxR = 0.55;
   for (const c of veh.corners) {
     const d = Math.hypot(c.x, c.z);
     if (d > maxR) maxR = d;
@@ -2893,6 +2895,8 @@ function stepVehicle(dt, driving) {
   function f_() { return _f; }
   const auth = .35 + Math.min(1, speed / 14) * .65 + (st.wings > 0 ? .2 : 0);
   const wingsC = Math.min(st.wings, 10);
+  const wingRatio = st.wings / Math.max(1, st.mass);
+  const stallSpeed = Math.max(7.0, 23.0 - wingRatio * 9.5);
 
   /* --- rotasi: input pemain + aerodinamika terkendali --- */
   let dPitch = -ax.y * 1.3 * auth * dt; // Inverted pitch: analog atas menukik turun, analog bawah mendongak naik
@@ -2939,9 +2943,24 @@ function stepVehicle(dt, driving) {
     }
   }
 
-  // AUTO-LEVEL PITCH: Mengembalikan hidung pesawat ke posisi terbang horizontal alami saat joystick dilepas
+  // AUTO-LEVEL PITCH:
+  // Saat gas aktif: hidung pesawat disejajarkan mendatar secara otomatis
+  // Saat gas dilepas:
+  // - Pesawat dengan sayap sedikit (misal 2 sayap) secara alami menukik turun (glide/dive attitude)
+  // - Jika kecepatan di bawah stall speed, hidung jatuh menukik ke bawah (aerodynamic stall)
   if (Math.abs(ax.y) < .1 && st.wings > 0) {
-    dPitch += -_f.y * (0.8 + wingsC * 0.2) * autoLevelPower * dt;
+    if (gas) {
+      dPitch += -_f.y * (0.8 + wingsC * 0.2) * autoLevelPower * dt;
+    } else {
+      const targetPitchY = (st.wings <= 2) ? -0.32 : (st.wings <= 4 ? -0.18 : -0.08);
+      dPitch += (targetPitchY - _f.y) * (0.65 + wingsC * 0.15) * autoLevelPower * dt;
+
+      if (vf < stallSpeed) {
+        const stallDrop = clamp((stallSpeed - vf) / stallSpeed, 0, 1);
+        const stallSeverity = (st.wings <= 2 ? 1.4 : (st.wings <= 4 ? 0.8 : 0.4));
+        dPitch -= stallDrop * stallSeverity * dt;
+      }
+    }
   }
 
   if (!veh.contact && speed > 4 && st.wings > 0) {
@@ -2970,13 +2989,39 @@ function stepVehicle(dt, driving) {
   /* --- gaya linier --- */
   _a.set(0, -PHYS.GRAV, 0);
   if (gas) _a.addScaledVector(_f, st.thr * PHYS.THRUST / st.mass);                     // thrust semua roket
-  const lift = vf > 0 ? Math.min(st.wings * PHYS.CL * vf * vf / st.mass, PHYS.GRAV * PHYS.MAXLIFT_G) : 0;
+
+  // Daya Angkat (Lift) Sayap Aerodinamis:
+  // Di bawah stall speed, daya angkat sayap anjlok drastis (aerodynamic stall).
+  // Pesawat dengan hanya 2 sayap memiliki daya angkat minim sehingga cepat turun/jatuh saat gas dilepas.
+  let lift = 0;
+  if (vf > 0) {
+    const stallFactor = clamp(vf / stallSpeed, 0, 1);
+    const liftEfficiency = stallFactor * stallFactor;
+    const maxLift = PHYS.GRAV * PHYS.MAXLIFT_G;
+    const baseLift = st.wings * PHYS.CL * vf * vf / st.mass;
+    lift = Math.min(baseLift * liftEfficiency, maxLift);
+  }
   _a.addScaledVector(_u, lift);                                                        // lift sayap
-  const cd = (.03 + .004 * st.count) / st.mass;                                        // drag kuadratik
-  _a.addScaledVector(veh.vel, -cd * speed - .02);
+
+  // Hambatan udara (Drag):
+  // Saat mesin mati (lepas gas), hambatan induksi tanpa dorongan memperlambat laju forward secara realistis
+  const unpoweredCd = !gas ? (0.045 + 0.035 / (st.wings + 1)) : 0;
+  const cd = ((.03 + .004 * st.count) / st.mass) + unpoweredCd;
+  _a.addScaledVector(veh.vel, -cd * speed - (!gas ? 0.35 : 0.02));
+
+  // Saat gas dilepas pada pesawat bersayap minim (<= 2 sayap), percepatan gravitasi turun lebih tegas:
+  if (!gas && st.wings <= 2) {
+    const fallBonus = clamp(1.0 - vf / stallSpeed, 0, 1) * 4.5;
+    _a.y -= fallBonus; // jatuh realistis cepat ke bawah saat kehilangan daya dorong
+  }
+
   veh.vel.addScaledVector(_a, dt);
-  if (vf > 3) {                                                                        // sayap meluruskan vektor kecepatan
-    const al = Math.min(1, (.15 + wingsC * .25) * dt) * clamp(vf / 15, 0, 1);
+
+  // Penyelarasan vektor kecepatan dengan sayap:
+  // HANYA kuat saat mesin menyala (gas). Saat gas dilepas, tidak membatalkan kecepatan jatuh bebas (sink rate) ke bawah!
+  if (vf > 3) {
+    const alignPower = gas ? 1.0 : clamp(st.wings / 6, 0.25, 0.75);
+    const al = Math.min(1, (.15 + wingsC * .25) * dt) * clamp(vf / 15, 0, 1) * alignPower;
     veh.vel.addScaledVector(_t1.copy(_f).multiplyScalar(veh.vel.dot(_f)).sub(veh.vel), al);
   }
   veh.pos.addScaledVector(veh.vel, dt);
@@ -3012,82 +3057,125 @@ function stepVehicle(dt, driving) {
 
   /* --- tabrakan pesawat dengan pohon & rintangan batu (obGrid) --- */
   const vcx = Math.floor(veh.pos.x / OB_CELL), vcz = Math.floor(veh.pos.z / OB_CELL);
-  const planeRad = veh.rad || 1.6;
   const processedObs = new Set();
 
   for (let dx = -1; dx <= 1; dx++) {
     for (let dz = -1; dz <= 1; dz++) {
+      if (mode !== 'drive' || !parts.size) break;
       const arr = obGrid.get(obKey(vcx + dx, vcz + dz));
       if (!arr) continue;
       for (const o of arr) {
+        if (mode !== 'drive' || !parts.size) break;
         if (o.alive === false || processedObs.has(o)) continue;
         processedObs.add(o);
 
         const ogy = o.y !== undefined ? o.y : surfaceY(o.x, o.z);
-        const otop = ogy + (o.h !== undefined ? o.h : 7);
+        const otop = ogy + (o.h !== undefined ? o.h : 2.5);
         // Cek rentang vertikal rintangan
         if (veh.pos.y < ogy - 1.2 || veh.pos.y > otop + 1.8) continue;
 
         // Radius efektif: batang di bawah vs daun di atas
         const inCanopy = o.h && veh.pos.y > ogy + 3.0;
-        const effR = inCanopy ? (o.r * 1.4 + 0.5) : (o.r + 0.4);
-        const minD = planeRad + effR;
+        const effR = inCanopy ? (o.r * 1.35 + 0.4) : (o.r + 0.3);
 
-        const ex = veh.pos.x - o.x, ez = veh.pos.z - o.z;
-        const distXZ = Math.hypot(ex, ez);
+        // 1. Broadphase cepat: Lewati jika pohon di luar radius terluar pesawat saat ini
+        const ex0 = veh.pos.x - o.x, ez0 = veh.pos.z - o.z;
+        const distCenter = Math.hypot(ex0, ez0);
+        if (distCenter > (veh.rad || 1.6) + effR + 0.6) continue;
 
-        if (distXZ < minD) {
-          const nx = distXZ > 1e-4 ? ex / distXZ : 1;
-          const nz = distXZ > 1e-4 ? ez / distXZ : 0;
-          // Batasi push maksimum per frame agar pesawat tidak pernah terpental jauh (anti-slingshot)
-          const push = Math.min(minD - distXZ, 1.2);
-          veh.pos.x += nx * push;
-          veh.pos.z += nz * push;
+        // 2. Narrowphase Per-Part: Cek tabrakan HANYA terhadap komponen yang BENAR-BENAR MASIH ADA (parts)
+        // Bagian yang sudah hancur/patah TIDAK memiliki hitbox dan tidak akan pernah membuat pesawat tersangkut!
+        let worstPen = 0;
+        let worstKey = null;
+        let worstPartPos = null;
+        let worstNx = 0, worstNz = 0;
 
-          // Koreksi vektor kecepatan normal secara inelastis (tanpa gaya pegas/pelontar liar)
-          const vDotN = veh.vel.x * nx + veh.vel.z * nz;
-          if (vDotN < 0) {
-            veh.vel.x -= 1.1 * vDotN * nx;
-            veh.vel.z -= 1.1 * vDotN * nz;
-            veh.vel.multiplyScalar(0.68);
-          }
+        for (const [key, p] of parts.entries()) {
+          // Posisi absolut komponen di world space
+          _t1.set(p.i - veh.c.x, (p.j + 0.5) - veh.c.y, p.k - veh.c.z).applyQuaternion(veh.quat).add(veh.pos);
 
-          // Efek benturan & guncangan layar HANYA terjadi saat tabrakan nyata (bukan saat menempel diam di pohon)
-          // Mencegah bug infinite getar layar
-          const isHardHit = vDotN < -1.6;
-          if (isHardHit && veh.impactCd <= 0) {
-            veh.impactCd = 0.26;
-            const hitY = clamp(veh.pos.y, ogy + 0.5, otop);
-            burst(veh.pos.x - nx * 0.8, hitY, veh.pos.z - nz * 0.8, speed > 14 ? 8 : 4, C_WOOD, C_DUST, 3, 1.2, 0.4);
-            const impShake = Math.min(0.42, Math.abs(vDotN) * 0.028);
-            shake = Math.min(0.55, shake + impShake);
+          // Cek batas vertikal komponen
+          if (_t1.y < ogy - 0.4 || _t1.y > otop + 0.4) continue;
 
-            // Tabrakan keras ke pohon pada kecepatan >= 12.5 m/s merusak bagian fisik pesawat!
-            if (speed >= 12.5) {
-              const impactPos = new THREE.Vector3(veh.pos.x - nx * 0.8, hitY, veh.pos.z - nz * 0.8);
-              damageAircraftAtPoint(impactPos, speed, new THREE.Vector3(nx, 0.4, nz));
+          // Cek jarak horizontal komponen vs pohon
+          const pdx = _t1.x - o.x;
+          const pdz = _t1.z - o.z;
+          const pdist = Math.hypot(pdx, pdz);
+          const partR = 0.55; // Radius kotak modul 1x1 grid
+          const minD = effR + partR;
+
+          if (pdist < minD) {
+            const pen = minD - pdist;
+            if (pen > worstPen) {
+              worstPen = pen;
+              worstKey = key;
+              worstPartPos = _t1.clone();
+              worstNx = pdist > 1e-4 ? pdx / pdist : 1;
+              worstNz = pdist > 1e-4 ? pdz / pdist : 0;
             }
           }
+        }
 
-          // Logika pohon tumbang / goyang:
-          // HANYA saat ada benturan nyata; pohon tidak terus berguncang saat ditempel
-          if (o.hp !== undefined && isHardHit) {
-            if (speed >= 16.0) {
-              o.hp -= (speed > 25 ? 4 : 2);
-              o.shake = 0.45;
-              const tidx = treeData.indexOf(o);
-              if (tidx >= 0) animTrees.add(tidx);
-              if (o.hp <= 0 && o.state === 0) {
-                o.state = 1; o.t = 0; o.alive = false;
-                o.dx = -nx; o.dz = -nz;
-                toast('💥 Pohon tumbang tertabrak pesawat!');
-              }
-            } else {
-              // Kecepatan pelan: hanya goyang lembut sesaat, pohon tidak tumbang
-              o.shake = Math.min(0.2, speed * 0.015);
-              const tidx = treeData.indexOf(o);
-              if (tidx >= 0) animTrees.add(tidx);
+        // Jika tidak ada komponen aktif yang menyentuh pohon, lewati (bebas lewat tanpa phantom collision)
+        if (worstPen <= 0) continue;
+
+        const nx = worstNx;
+        const nz = worstNz;
+
+        // Batasi push maksimum per frame agar pesawat tidak pernah terpental jauh (anti-slingshot)
+        const push = Math.min(worstPen, 1.1);
+        veh.pos.x += nx * push;
+        veh.pos.z += nz * push;
+
+        // Koreksi vektor kecepatan normal secara inelastis
+        const vDotN = veh.vel.x * nx + veh.vel.z * nz;
+        if (vDotN < 0) {
+          // Pantulan elastis lembut ke arah luar
+          veh.vel.x -= 1.15 * vDotN * nx;
+          veh.vel.z -= 1.15 * vDotN * nz;
+          // Gesekan meluncur alami (sliding friction) - TIDAK mengunci atau menghentikan pesawat secara mendadak!
+          const slideDamp = Math.max(0.70, 1.0 - 2.5 * dt);
+          veh.vel.x *= slideDamp;
+          veh.vel.z *= slideDamp;
+        }
+
+        // Efek benturan & guncangan layar HANYA terjadi saat tabrakan nyata (bukan saat menempel diam)
+        const isHardHit = vDotN < -1.8 || (worstPen > 0.32 && speed > 7.0);
+        if (isHardHit && veh.impactCd <= 0) {
+          veh.impactCd = 0.22;
+          const hitY = clamp(worstPartPos.y, ogy + 0.5, otop);
+          burst(worstPartPos.x, hitY, worstPartPos.z, speed > 14 ? 8 : 4, C_WOOD, C_DUST, 3, 1.2, 0.4);
+          const impShake = Math.min(0.40, Math.abs(vDotN) * 0.025);
+          shake = Math.min(0.55, shake + impShake);
+
+          // Tabrakan keras ke pohon pada kecepatan >= 11.5 m/s merusak komponen yang menabrak!
+          if (speed >= 11.5) {
+            damageAircraftAtPoint(worstPartPos, speed, new THREE.Vector3(nx, 0.4, nz), worstKey);
+            // Berikan impuls pemisah agar badan pesawat langsung lepas dari pohon setelah part copot
+            veh.pos.x += nx * 0.35;
+            veh.pos.z += nz * 0.35;
+            veh.vel.x += nx * 2.0;
+            veh.vel.z += nz * 2.0;
+          }
+        }
+
+        // Logika pohon tumbang / goyang:
+        if (o.hp !== undefined && isHardHit) {
+          if (speed >= 16.0) {
+            o.hp -= (speed > 25 ? 4 : 2);
+            o.shake = 0.45;
+            const tidx = treeData.indexOf(o);
+            if (tidx >= 0) animTrees.add(tidx);
+            if (o.hp <= 0 && o.state === 0) {
+              o.state = 1; o.t = 0; o.alive = false;
+              o.dx = -nx; o.dz = -nz;
+              toast('💥 Pohon tumbang tertabrak pesawat!');
             }
+          } else {
+            // Kecepatan pelan: hanya goyang lembut sesaat, pohon tidak tumbang
+            o.shake = Math.min(0.2, speed * 0.015);
+            const tidx = treeData.indexOf(o);
+            if (tidx >= 0) animTrees.add(tidx);
           }
         }
       }
@@ -3837,7 +3925,7 @@ function makeMoonTex() {
   return new THREE.CanvasTexture(c);
 }
 const moonSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeMoonTex(), transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }));
-moonSprite.scale.setScalar(115); scene.add(moonSprite);
+moonSprite.scale.setScalar(135); scene.add(moonSprite);
 
 // Bintang di langit malam (Stars)
 const starGeo = new THREE.BufferGeometry();
@@ -3855,8 +3943,9 @@ const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, transpare
 const stars = new THREE.Points(starGeo, starMat);
 stars.frustumCulled = false; scene.add(stars);
 
-// Lampu Senter / Headlight pemain di malam hari
+// Lampu Senter buatan pemain dinonaktifkan (cahaya malam murni dari sinar bulan alami)
 const headLight = new THREE.PointLight(0xfff2dc, 0, 32, 1.6);
+headLight.intensity = 0;
 scene.add(headLight);
 
 // --- Minimap 2D Canvas ---
@@ -4029,12 +4118,12 @@ function sunOccluded() {
   return false;
 }
 function updateSun(dt, clear) {
-  const sunAbove = SUN_DIR.y > 0.05;
+  const sunFade = clamp((SUN_DIR.y + 0.04) / 0.12, 0, 1);
   sunSprite.position.copy(camera.position).addScaledVector(SUN_DIR, 800);
-  sunSprite.material.opacity = sunAbove ? Math.min(1, clear * 1.35) : 0;
+  sunSprite.material.opacity = sunFade * Math.min(1, clear * 1.35);
   _sp.copy(sunSprite.position).project(camera);
   const onScreen = _sp.z < 1 && Math.abs(_sp.x) < 1.35 && Math.abs(_sp.y) < 1.35;
-  const target = onScreen && clear > .05 && sunAbove && !sunOccluded() ? clear * Math.min(1, SUN_DIR.y * 2.5) : 0;
+  const target = onScreen && clear > .05 && sunFade > .01 && !sunOccluded() ? clear * Math.min(1, sunFade * 2.0) : 0;
   sunVis += (target - sunVis) * Math.min(1, dt * 8);
   if (sunVis < .01) { if (glareEl.style.opacity !== '0') { glareEl.style.opacity = washEl.style.opacity = 0; ghostEls.forEach(e => e.style.opacity = 0); } return; }
   const sx = (_sp.x * .5 + .5) * innerWidth, sy = (-_sp.y * .5 + .5) * innerHeight;
@@ -5100,20 +5189,64 @@ const tod = {
 };
 const TOD_TARGETS = { dawn: 0.25, day: 0.50, dusk: 0.75, night: 0.00 };
 
-// Palet 4 Fase Waktu
+// Palet 4 Fase Waktu (Pagi, Siang, Sore, Malam)
 const P_DAWN  = { sky: 0xf59873, fog: 0xf6a788, sun: 0xffd2a0, hemiS: 0xffd0b0, hemiG: 0x556345, sunI: 0.75, hemiI: 0.82, night: 0.0 };
 const P_DAY   = { sky: 0xaee0ff, fog: 0xaee0ff, sun: 0xfff4dc, hemiS: 0xe3f3ff, hemiG: 0x6f9250, sunI: 0.88, hemiI: 0.95, night: 0.0 };
 const P_DUSK  = { sky: 0xdb441e, fog: 0xd24d28, sun: 0xff3804, hemiS: 0xff6b2b, hemiG: 0x3d251a, sunI: 0.86, hemiI: 0.74, night: 0.0 };
-const P_NIGHT = { sky: 0x060e1d, fog: 0x081326, sun: 0x6c92c4, hemiS: 0x16263f, hemiG: 0x0a141e, sunI: 0.28, hemiI: 0.45, night: 1.0 };
+// Malam hari diterangi cahaya bulan keperakan (moonlight) agar dataran & pegunungan terlihat jelas dan tidak hitam pekat
+const P_NIGHT = { sky: 0x091424, fog: 0x0c172a, sun: 0x98bfe8, hemiS: 0x223652, hemiG: 0x142232, sunI: 0.38, hemiI: 0.46, night: 1.0 };
 
 function sampleSky(t) {
-  // t: 0..1
+  // t: 0..1 dengan kurva transisi kontinu mulus dan plateau waktu alami:
+  // 0.88..0.12: Malam stabil berbintang
+  // 0.12..0.38: Fajar matahari terbit lembut hingga pagi cerah (puncak di 0.25)
+  // 0.38..0.62: Siang hari benderang stabil (puncak di 0.50)
+  // 0.62..0.88: Sore sunset jingga membara hingga senja temaram (puncak di 0.75)
   let k0, k1, f;
-  if (t < 0.25) { k0 = P_NIGHT; k1 = P_DAWN;  f = t / 0.25; }
-  else if (t < 0.50) { k0 = P_DAWN;  k1 = P_DAY;   f = (t - 0.25) / 0.25; }
-  else if (t < 0.75) { k0 = P_DAY;   k1 = P_DUSK;  f = (t - 0.50) / 0.25; }
-  else               { k0 = P_DUSK;  k1 = P_NIGHT; f = (t - 0.75) / 0.25; }
-  f = f * f * (3 - 2 * f); // smoothstep
+  if (t < 0.12) {
+    return {
+      sky: new THREE.Color(P_NIGHT.sky),
+      fog: new THREE.Color(P_NIGHT.fog),
+      sun: new THREE.Color(P_NIGHT.sun),
+      hemiS: new THREE.Color(P_NIGHT.hemiS),
+      hemiG: new THREE.Color(P_NIGHT.hemiG),
+      sunI: P_NIGHT.sunI,
+      hemiI: P_NIGHT.hemiI,
+      night: 1.0
+    };
+  } else if (t < 0.25) {
+    k0 = P_NIGHT; k1 = P_DAWN; f = (t - 0.12) / 0.13;
+  } else if (t < 0.38) {
+    k0 = P_DAWN; k1 = P_DAY; f = (t - 0.25) / 0.13;
+  } else if (t < 0.62) {
+    return {
+      sky: new THREE.Color(P_DAY.sky),
+      fog: new THREE.Color(P_DAY.fog),
+      sun: new THREE.Color(P_DAY.sun),
+      hemiS: new THREE.Color(P_DAY.hemiS),
+      hemiG: new THREE.Color(P_DAY.hemiG),
+      sunI: P_DAY.sunI,
+      hemiI: P_DAY.hemiI,
+      night: 0.0
+    };
+  } else if (t < 0.75) {
+    k0 = P_DAY; k1 = P_DUSK; f = (t - 0.62) / 0.13;
+  } else if (t < 0.88) {
+    k0 = P_DUSK; k1 = P_NIGHT; f = (t - 0.75) / 0.13;
+  } else {
+    return {
+      sky: new THREE.Color(P_NIGHT.sky),
+      fog: new THREE.Color(P_NIGHT.fog),
+      sun: new THREE.Color(P_NIGHT.sun),
+      hemiS: new THREE.Color(P_NIGHT.hemiS),
+      hemiG: new THREE.Color(P_NIGHT.hemiG),
+      sunI: P_NIGHT.sunI,
+      hemiI: P_NIGHT.hemiI,
+      night: 1.0
+    };
+  }
+  // Smoothstep kurva S mulus (C1 kontinuitas tanpa sudut tajam / patah warna)
+  f = f * f * (3 - 2 * f);
   return {
     sky: new THREE.Color(k0.sky).lerp(_c.set(k1.sky), f),
     fog: new THREE.Color(k0.fog).lerp(_c.set(k1.fog), f),
@@ -5142,7 +5275,7 @@ function strike(focus) {
 function updateWeather(dt) {
   const focus = mode === 'drive' ? veh.pos : mode === 'build' ? SITE : player;
 
-  // 1. Update Waktu Hari (Time of Day)
+  // 1. Update Waktu Hari (Time of Day): Transisi eksponensial super halus & gradual
   if (tod.mode === 'auto') {
     tod.time = (tod.time + tod.speed * dt) % 1.0;
   } else {
@@ -5150,83 +5283,74 @@ function updateWeather(dt) {
     let diff = tgt - tod.time;
     if (diff > 0.5) diff -= 1.0;
     if (diff < -0.5) diff += 1.0;
-    tod.time = (tod.time + clamp(diff, -dt * 0.4, dt * 0.4) + 1.0) % 1.0;
+    // Easing kurva eksponensial halus tanpa rem mendadak
+    const step = diff * Math.min(1.0, dt * 2.8);
+    const minStep = Math.sign(diff) * Math.min(Math.abs(diff), dt * 0.05);
+    tod.time = (tod.time + (Math.abs(step) > Math.abs(minStep) ? step : minStep) + 1.0) % 1.0;
   }
 
-  // 1b. Lintasan Matahari di Langit (Pagi -> Siang -> Sore)
-  // Rentang siang aktif dari fajar (0.15) hingga senja (0.83)
-  const isDay = tod.time >= 0.15 && tod.time <= 0.83;
-  let sunX, sunY, sunZ;
-  if (isDay) {
-    const df = (tod.time - 0.15) / (0.83 - 0.15); // 0 (fajar) .. 0.5 (tengah hari) .. 1 (senja terbenam)
-    // Ketinggian matahari:
-    // Pagi (tod=0.25): elevasi ~0.26
-    // Siang (tod=0.50): elevasi ~0.48 (puncak benderang)
-    // Sore (tod=0.75): elevasi ~0.11 (sangat rendah, tepat di atas horizon bukit mau terbenam!)
-    if (df < 0.5) {
-      const u = df / 0.5;
-      sunY = 0.16 + 0.32 * Math.sin(u * Math.PI * 0.5);
-    } else {
-      const u = (df - 0.5) / 0.5; // 0 di siang, ~0.88 di sore (0.75)
-      sunY = 0.48 - 0.42 * u;     // saat u = 0.88 (sore), sunY = ~0.11 (sunset)
-    }
-    // Azimuth: melengkung dari timur (kiri-depan) ke barat (kanan-depan) selalu di depan kamera (-Z)
-    const az = (df - 0.5) * 1.65;
-    sunX = Math.sin(az) * 0.78;
-    sunZ = -Math.cos(az) * 0.78;
-  } else {
-    // Malam hari: matahari tenggelam di bawah cakrawala
-    sunY = -0.45; sunX = 0; sunZ = 1;
-  }
+  // 1b. Lintasan Kontinu Matahari & Bulan di Langit (Pagi -> Siang -> Sore -> Malam)
+  // Perputaran orbital halus melingkar sempurna tanpa loncatan visual / sudut patah
+  const orbAngle = (tod.time - 0.25) * Math.PI * 2;
+  const sunElev = Math.sin(orbAngle);
+  const sunAzim = -Math.cos(orbAngle);
+
+  // Vektor matahari
+  const sunX = sunAzim * 0.85;
+  const sunY = sunElev * 0.68;
+  const sunZ = -0.65 - Math.max(0, sunElev) * 0.25;
   SUN_DIR.set(sunX, sunY, sunZ).normalize();
 
-  // Posisi directional light & bayangan
-  const isSunUp = SUN_DIR.y > 0.04;
-  const lightDir = isSunUp ? SUN_DIR : _t1.set(0.3, 0.45, -0.8).normalize();
-  sun.position.set(focus.x + lightDir.x * 100, focus.y + lightDir.y * 100, focus.z + lightDir.z * 100);
-  sun.target.position.set(focus.x, focus.y, focus.z); sun.target.updateMatrixWorld();
+  // Vektor bulan (tepat berlawanan 180 derajat di langit)
+  const moonElev = -sunElev;
+  const moonAzim = -sunAzim;
+  const moonX = moonAzim * 0.80;
+  const moonY = Math.max(0.12, moonElev * 0.60);
+  const moonZ = -0.65 - Math.max(0, moonElev) * 0.20;
+  _t2.set(moonX, moonY, moonZ).normalize();
+  moonSprite.position.copy(camera.position).addScaledVector(_t2, 800);
 
-  // Posisi Bulan di langit malam (tampak jelas di langit malam pada arah hadap kamera)
-  const MOON_DIR = _t2.set(-0.35, 0.42, -0.80).normalize();
-  moonSprite.position.copy(camera.position).addScaledVector(MOON_DIR, 800);
+  // Arah cahaya directional light:
+  // Transisi sudut bayangan halus saat pergantian matahari terbenam ke bulan (tanpa snap seketika)
+  const dayWeight = clamp((sunElev + 0.12) / 0.24, 0, 1);
+  const lightDir = _t1.copy(_t2).lerp(SUN_DIR, dayWeight).normalize();
+  sun.position.set(focus.x + lightDir.x * 100, focus.y + lightDir.y * 100, focus.z + lightDir.z * 100);
+  sun.target.position.set(focus.x, focus.y, focus.z);
+  sun.target.updateMatrixWorld();
 
   // Sampling warna langit & pencahayaan sesuai waktu hari
   const pal = sampleSky(tod.time);
   const nightFactor = pal.night;
 
   // Efek visual matahari sore (sunset illusion & corona jingga membara)
-  const duskFactor = Math.max(0, 1 - Math.abs(tod.time - 0.75) / 0.14);
-  // Matahari tampak lebih besar saat mau terbenam di horizon (sunset illusion)
+  let rawDusk = Math.max(0, 1 - Math.abs(tod.time - 0.75) / 0.13);
+  const duskFactor = rawDusk * rawDusk * (3 - 2 * rawDusk); // smoothstep
   sunSprite.scale.setScalar(175 + duskFactor * 65);
 
-  // Warna bola matahari: jauh lebih jingga kemerahan menyala saat sore
-  if (duskFactor > 0.02) {
+  // Warna bola matahari: berangsur-angsur menjadi merah jingga saat senja
+  if (duskFactor > 0.001) {
     sunSprite.material.color.copy(pal.sun).lerp(new THREE.Color(0xff2200), duskFactor * 0.88);
   } else {
     sunSprite.material.color.copy(pal.sun);
   }
 
-  // Glare layar bernuansa jingga hangat keemasan saat sore
-  if (duskFactor > 0.15) {
-    glareEl.style.background = 'radial-gradient(circle, rgba(255,140,25,.95) 0, rgba(255,80,10,.6) 10%, rgba(255,50,5,.25) 26%, rgba(255,30,0,0) 65%)';
-    washEl.style.background = 'radial-gradient(ellipse at center, rgba(255,100,25,.5), rgba(255,60,15,.2))';
-  } else {
-    glareEl.style.background = 'radial-gradient(circle, rgba(255,253,240,.95) 0, rgba(255,242,200,.55) 5%, rgba(255,220,150,.2) 20%, rgba(255,200,120,0) 58%)';
-    washEl.style.background = 'radial-gradient(ellipse at center, rgba(255,244,214,.6), rgba(255,236,190,.3))';
-  }
+  // Glare layar bernuansa hangat keemasan saat sore (transisi warna sepenuhnya halus tanpa pop)
+  const gr = 255;
+  const gg = Math.round(THREE.MathUtils.lerp(250, 120, duskFactor));
+  const gb = Math.round(THREE.MathUtils.lerp(220, 20, duskFactor));
+  glareEl.style.background = `radial-gradient(circle, rgba(${gr},${gg},${gb},.95) 0, rgba(${gr},${Math.round(gg * 0.75)},${Math.round(gb * 0.45)},.55) 6%, rgba(${gr},${Math.round(gg * 0.55)},${Math.round(gb * 0.25)},.2) 20%, rgba(255,180,60,0) 60%)`;
+  washEl.style.background = `radial-gradient(ellipse at center, rgba(${gr},${Math.round(gg * 0.75)},${Math.round(gb * 0.45)},.5), rgba(${gr},${Math.round(gg * 0.55)},${Math.round(gb * 0.25)},.2))`;
 
   // Bintang & Bulan
   stars.position.copy(camera.position);
   starMat.opacity = nightFactor * (1 - wx.k * 0.8);
   moonSprite.material.opacity = nightFactor * (1 - wx.k) * 0.95;
 
-  // Lampu Senter / Headlight pemain saat malam / sore
-  headLight.position.set(focus.x, focus.y + 1.8, focus.z);
-  headLight.intensity = (nightFactor * 1.8 + (tod.mode === 'dusk' ? 0.7 : 0));
+  // Cahaya buatan di sekitar/samping tubuh pemain telah dihilangkan sepenuhnya
+  // Permukaan dataran & pegunungan kini diterangi secara alami dan merata oleh cahaya bulan (moonlight)
+  headLight.intensity = 0;
 
-
-
-  // 2. Update Cuaca (Cerah / Hujan / Petir)
+  // 2. Update Cuaca (Cerah / Hujan / Petir): Transisi gradual halus
   if (wx.mode === 'auto') {
     wx.timer -= dt;
     if (wx.timer <= 0) {
@@ -5235,7 +5359,8 @@ function updateWeather(dt) {
       toast(wx.target ? '🌧️ Hujan mulai turun...' : '☀️ Cuaca cerah kembali');
     }
   } else wx.target = wx.mode === 'rain' ? 1 : 0;
-  wx.k += clamp(wx.target - wx.k, -dt / 7, dt / 7);
+  const tgtK = (wx.mode === 'rain') ? 1.0 : (wx.mode === 'clear') ? 0.0 : wx.target;
+  wx.k += (tgtK - wx.k) * Math.min(1.0, dt * 0.45);
   const k = wx.k;
 
   if (k > .6) { wx.nextBolt -= dt; if (wx.nextBolt <= 0) { strike(focus); wx.nextBolt = 4 + Math.random() * 9; } }
