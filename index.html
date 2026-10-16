@@ -934,11 +934,15 @@ const treeMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
 for (let k = 0; k < 6; k++) {
   const count = Math.max(1, typeCounts[k]);
   const tm = new THREE.InstancedMesh(TRUNK_GEOS[k], treeMat, count);
+  tm.castShadow = false; tm.receiveShadow = false;
+  tm.userData.isTree = true;
   tm.frustumCulled = false; scene.add(tm);
   trunkInsts.push(tm); allTreeMeshes.push(tm);
 
   if (FOL_GEOS[k]) {
     const fm = new THREE.InstancedMesh(FOL_GEOS[k], treeMat, count);
+    fm.castShadow = false; fm.receiveShadow = false;
+    fm.userData.isTree = true;
     fm.frustumCulled = false; scene.add(fm);
     foliageInsts.push(fm); allTreeMeshes.push(fm);
   } else {
@@ -2193,35 +2197,10 @@ const beamMat = new THREE.ShaderMaterial({
   depthWrite: false
 });
 
-const beamGeo = flat(new THREE.CylinderGeometry(0.24, 7.8, 65, 16, 6, true).rotateX(Math.PI / 2).translate(0, 0, -32.5));
-
-// Decal / mesh refleksi pendaran cahaya di atas tanah & lereng bukit
-function makeGroundSpotTex() {
-  const c = document.createElement('canvas'); c.width = c.height = 128;
-  const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  gr.addColorStop(0, 'rgba(255, 252, 238, 0.95)');
-  gr.addColorStop(0.22, 'rgba(255, 245, 205, 0.65)');
-  gr.addColorStop(0.52, 'rgba(255, 230, 160, 0.28)');
-  gr.addColorStop(0.82, 'rgba(255, 210, 120, 0.06)');
-  gr.addColorStop(1, 'rgba(255, 190, 80, 0)');
-  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
-  return new THREE.CanvasTexture(c);
-}
-const groundSpotTex = makeGroundSpotTex();
-const groundLightPoolMat = new THREE.MeshBasicMaterial({
-  map: groundSpotTex,
-  transparent: true,
-  opacity: 0,
-  depthWrite: false,
-  blending: THREE.AdditiveBlending,
-  side: THREE.DoubleSide
-});
-const groundLightPool = new THREE.Mesh(
-  new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
-  groundLightPoolMat
-);
-groundLightPool.visible = false;
-scene.add(groundLightPool);
+const SPOT_ANGLE = Math.PI / 8.5; // ~21.2 derajat half-angle (~42.4 derajat total cone)
+const BEAM_LEN = 75;
+const BEAM_RADIUS_END = BEAM_LEN * Math.tan(SPOT_ANGLE); // Geometri volumetric cone 100% presisi sinkron dengan SpotLight
+const beamGeo = flat(new THREE.CylinderGeometry(0.24, BEAM_RADIUS_END, BEAM_LEN, 18, 6, true).rotateX(Math.PI / 2).translate(0, 0, -BEAM_LEN / 2));
 
 function getSkyDarkness() {
   if (typeof tod === 'undefined' || typeof sampleSky !== 'function') return 0;
@@ -2233,7 +2212,7 @@ function getSkyDarkness() {
   return clamp(nightF * 1.0 + duskF * 0.78 + dawnF * 0.35 + rainF * 0.55, 0, 1);
 }
 
-// Sinkronisasi Lampu Sorot pesawat (Headlights 3D yang menembus malam & kabut)
+// Sinkronisasi Lampu Sorot pesawat (Headlights 3D fisik real-time)
 function syncVehicleLights() {
   if (typeof vehLightGroup === 'undefined') return;
   while (vehLightGroup.children.length > 0) {
@@ -2251,35 +2230,39 @@ function syncVehicleLights() {
       const lz = p.k - veh.c.z;
       veh.lights.push(new THREE.Vector3(lx, ly, lz));
 
-      // 1. SpotLight proyeksi ke depan (arah -Z) dengan bayangan real-time
-      const spot = new THREE.SpotLight(0xfffaed, 0, 130, Math.PI / 4.2, 0.45, 1.2);
-      spot.position.set(lx, ly + 0.05, lz - 0.28);
+      // 1. SpotLight proyeksi fisik ke depan moncong pesawat
+      // Cone angle SPOT_ANGLE, penumbra 0.45 agar gradien tepi lampu halus
+      const spot = new THREE.SpotLight(0xfffaed, 0, 150, SPOT_ANGLE, 0.45, 1.2);
+      // Posisikan spotlight di moncong lensa
+      spot.position.set(lx, ly + 0.15, lz - 0.35);
       spot.castShadow = true;
       spot.shadow.mapSize.set(1024, 1024);
-      spot.shadow.camera.near = 0.6;
-      spot.shadow.camera.far = 135;
-      spot.shadow.camera.fov = 48;
-      spot.shadow.bias = -0.0006;
-      spot.shadow.normalBias = 0.04;
+      // PENTING: Near plane harus melampaui seluruh bodi pesawat (e.g. 3.2m)
+      // agar badan pesawat sendiri TIDAK membayangi / menghalangi lampunya sendiri!
+      spot.shadow.camera.near = Math.max(3.2, (veh.rad || 2.0) + 1.2);
+      spot.shadow.camera.far = 145;
+      spot.shadow.bias = -0.0008;
+      spot.shadow.normalBias = 0.05;
 
+      // Target Object di dalam vehLightGroup (lurus searah moncong lampu -Z)
       const targetObj = new THREE.Object3D();
-      targetObj.position.set(lx, ly + 0.05, lz - 50);
+      targetObj.position.set(lx, ly + 0.15 - 1.2, lz - 80);
       vehLightGroup.add(targetObj);
       spot.target = targetObj;
       vehLightGroup.add(spot);
 
       // 2. Soft point light di lensa agar hidung & badan pesawat berpendar terang
-      const bulb = new THREE.PointLight(0xfff5cf, 0, 9, 1.5);
-      bulb.position.set(lx, ly + 0.05, lz - 0.30);
+      const bulb = new THREE.PointLight(0xfff5cf, 0, 8, 1.5);
+      bulb.position.set(lx, ly + 0.15, lz - 0.35);
       vehLightGroup.add(bulb);
 
-      // 3. Efek Pancaran Cahaya (Volumetric Light Cone Beam) 3D
+      // 3. Efek Pancaran Cahaya (Volumetric Light Cone Beam) 3D di udara
       const thisBeamMat = beamMat.clone();
       const beamMesh = new THREE.Mesh(beamGeo, thisBeamMat);
-      beamMesh.position.set(lx, ly + 0.05, lz - 0.28);
+      beamMesh.position.set(lx, ly + 0.15, lz - 0.35);
       vehLightGroup.add(beamMesh);
 
-      vehLightGroup.userData.items.push({ spot, bulb, beamMat: thisBeamMat, beamMesh });
+      vehLightGroup.userData.items.push({ spot, targetObj, bulb, beamMat: thisBeamMat, beamMesh });
     }
   });
   vehLightGroup.visible = (mode === 'drive' && veh.lights.length > 0);
@@ -2291,7 +2274,6 @@ function updateVehicleLights(dt) {
   const hasLights = (mode === 'drive' && veh.lights && veh.lights.length > 0);
   if (!hasLights) {
     vehLightGroup.visible = false;
-    if (typeof groundLightPool !== 'undefined') groundLightPool.visible = false;
     return;
   }
 
@@ -2314,43 +2296,8 @@ function updateVehicleLights(dt) {
     if (item.beamMat && item.beamMat.uniforms && item.beamMat.uniforms.opacity) {
       item.beamMat.uniforms.opacity.value = THREE.MathUtils.lerp(item.beamMat.uniforms.opacity.value, targetBeamAlpha, dt * 6.0);
     }
-  }
-
-  // Update refleksi bayangan & pendaran cahaya di atas kontur tanah
-  if (typeof groundLightPool !== 'undefined') {
-    if (targetIntensity <= 0.05) {
-      groundLightPool.visible = false;
-    } else {
-      _f.set(0, 0, -1).applyQuaternion(veh.quat);
-      if (_f.y > 0.5) {
-        groundLightPool.visible = false;
-      } else {
-        let hitGround = false;
-        let testDist = 6;
-        const maxDist = 95;
-        const startPos = veh.pos;
-        while (testDist < maxDist) {
-          const tx = startPos.x + _f.x * testDist;
-          const ty = startPos.y + _f.y * testDist;
-          const tz = startPos.z + _f.z * testDist;
-          const gy = surfaceY(tx, tz);
-          if (ty <= gy + 0.6) {
-            hitGround = true;
-            groundNormal(tx, tz, _n);
-            groundLightPool.position.set(tx, gy + 0.16, tz);
-            _q2.setFromUnitVectors(new THREE.Vector3(0, 1, 0), _n);
-            groundLightPool.quaternion.copy(_q2);
-            const poolScale = 5.0 + (testDist / maxDist) * 12.0;
-            groundLightPool.scale.set(poolScale, 1, poolScale * (1.0 + Math.abs(_f.y) * 0.8));
-            const distFade = clamp(1.0 - (testDist / maxDist), 0, 1);
-            groundLightPoolMat.opacity = (targetIntensity / 3.8) * distFade * 0.65;
-            groundLightPool.visible = true;
-            break;
-          }
-          testDist += 3.5;
-        }
-        if (!hitGround) groundLightPool.visible = false;
-      }
+    if (item.targetObj) {
+      item.targetObj.updateMatrixWorld();
     }
   }
 }
@@ -3628,7 +3575,6 @@ function setMode(m) {
   if (m !== 'drive') {
     if (typeof plumeGroup !== 'undefined') plumeGroup.visible = false;
     if (typeof vehLightGroup !== 'undefined') vehLightGroup.visible = false;
-    if (typeof groundLightPool !== 'undefined') groundLightPool.visible = false;
     if (typeof rocketLight !== 'undefined') rocketLight.intensity = 0;
   } else {
     if (typeof vehLightGroup !== 'undefined') vehLightGroup.visible = (veh.lights && veh.lights.length > 0);
@@ -3671,7 +3617,6 @@ function toggleCraft() {
     if (mode === 'drive') leaveVehicle();
     if (typeof plumeGroup !== 'undefined') plumeGroup.visible = false;
     if (typeof vehLightGroup !== 'undefined') vehLightGroup.visible = false;
-    if (typeof groundLightPool !== 'undefined') groundLightPool.visible = false;
     if (typeof rocketLight !== 'undefined') rocketLight.intensity = 0;
     
     // CRAFTING DIMANA SAJA: Pindahkan pusat SITE langsung ke lokasi dataran pemain saat ini!
@@ -3718,7 +3663,6 @@ function interact() {
 function leaveVehicle() {
   if (typeof plumeGroup !== 'undefined') plumeGroup.visible = false;
   if (typeof vehLightGroup !== 'undefined') vehLightGroup.visible = false;
-  if (typeof groundLightPool !== 'undefined') groundLightPool.visible = false;
   if (typeof rocketLight !== 'undefined') rocketLight.intensity = 0;
   _r.set(1, 0, 0).applyQuaternion(veh.quat); _r.y = 0; _r.normalize();
   player.x = veh.pos.x + _r.x * 2.5; player.z = veh.pos.z + _r.z * 2.5;
@@ -4024,14 +3968,29 @@ function updateCamera(dt) {
  *     - Petir (kilat + bolt bercabang) + suara WebAudio prosedural
  *     - Minimap radar di pojok kiri atas dengan detektor jarak crafting
  * ------------------------------------------------------------------ */
-// --- Bayangan: tandai semua mesh Lambert (terrain, pohon, batu, pemain, pad) ---
-scene.traverse(o => { if (o.isMesh && o.material && o.material.isMeshLambertMaterial) o.castShadow = o.receiveShadow = true; });
+// --- Bayangan: tandai semua mesh Lambert (terrain, batu, pemain, pad), KECUALI pohon ---
+scene.traverse(o => {
+  if (o.isMesh && o.material && o.material.isMeshLambertMaterial) {
+    if (o.userData && o.userData.isTree) {
+      o.castShadow = false;
+      o.receiveShadow = false;
+    } else {
+      o.castShadow = o.receiveShadow = true;
+    }
+  }
+});
 let shadowsOn = false;
 function applyShadows() {
   const on = qIdx === 2;
   if (on === shadowsOn) return;
   shadowsOn = on; renderer.shadowMap.enabled = on; sun.castShadow = on;
-  scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });   // recompile shader dengan/tanpa shadow
+  scene.traverse(o => {
+    if (o.userData && o.userData.isTree) {
+      o.castShadow = false;
+      o.receiveShadow = false;
+    }
+    if (o.material) o.material.needsUpdate = true;
+  });   // recompile shader dengan/tanpa shadow
 }
 onQualityChange = applyShadows; applyShadows();
 
