@@ -166,8 +166,8 @@
   <div class="flare absolute left-0 top-0 rounded-full" data-t="-0.45" style="width:70px;height:70px;opacity:0;mix-blend-mode:screen;background:radial-gradient(circle, rgba(255,235,170,.55), rgba(255,210,130,0) 70%)"></div>
   <div class="flare absolute left-0 top-0 rounded-full" data-t="0.25" style="width:40px;height:40px;opacity:0;mix-blend-mode:screen;background:radial-gradient(circle, rgba(170,255,200,.45), rgba(120,220,170,0) 70%)"></div>
   <div class="flare absolute left-0 top-0 rounded-full" data-t="0.6" style="width:110px;height:110px;opacity:0;mix-blend-mode:screen;background:radial-gradient(circle, rgba(160,200,255,0) 45%, rgba(160,200,255,.35) 62%, rgba(160,200,255,0) 72%)"></div>
-  <div class="flare absolute left-0 top-0 rounded-full" data-t="1.1" style="width:55px;height:55px;opacity:0;mix-blend-mode:screen;background:radial-gradient(circle, rgba(255,170,120,.45), rgba(255,140,100,0) 70%)"></div>
   <div id="flash" class="absolute inset-0 bg-white" style="opacity:0"></div>
+  <div id="sleepFade" class="absolute inset-0 bg-black pointer-events-none transition-opacity duration-1000 ease-in-out" style="opacity:0; z-index:9999;"></div>
 
 
   <!-- kanan atas: FPS + menu kualitas -->
@@ -1987,20 +1987,24 @@ scene.add(missileGroup);
 
 function createMissilePickupMesh() {
   const g = new THREE.Group();
-  // Tabung peluncur rudal vertikal
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.1, 8), lam(0xe2e8f0));
+  // Tabung peluncur rudal vertikal: Tactical Military Olive Green (membedakan tegas dari roket putih)
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.1, 8), lam(0x2d4030));
   body.position.y = 0.58;
   g.add(body);
-  // Kepala hulu ledak kerucut merah
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.32, 8), lam(0xe11d48));
+  // Kepala hulu ledak kerucut: Hazard Gold-Yellow (membedakan tegas dari hidung merah roket)
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.32, 8), lam(0xfbbf24));
   tip.position.y = 1.25;
   g.add(tip);
-  // Sirip ekor kuning-oranye
-  const fin1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.04), lam(0xd97706));
+  // Sirip ekor baja karbon gelap
+  const fin1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.04), lam(0x1e293b));
   fin1.position.y = 0.22;
-  const fin2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.5), lam(0xd97706));
+  const fin2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.5), lam(0x1e293b));
   fin2.position.y = 0.22;
   g.add(fin1, fin2);
+  // Ring aksen hazard amber di leher rudal
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.125, 0.125, 0.10, 8), new THREE.MeshBasicMaterial({ color: 0xf59e0b }));
+  ring.position.y = 0.95;
+  g.add(ring);
   // Halo cincin pendar emas-kuning di dasar
   const haloGeo = new THREE.RingGeometry(0.35, 0.55, 16).rotateX(-Math.PI / 2);
   const halo = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ color: 0xfbbf24, side: THREE.DoubleSide, transparent: true, opacity: 0.8 }));
@@ -2776,26 +2780,26 @@ function makePartMesh(type) {
     core.position.set(0, 0.08, 0.02);
     g.add(core);
   } else if (type === 'missile') {
-    // Pylon dudukan pilar baja ke rangka
-    const pylon = new THREE.Mesh(G.missilePylon, lam(0x334155));
+    // Pylon dudukan pilar baja karbon ke rangka pesawat
+    const pylon = new THREE.Mesh(G.missilePylon, lam(0x1e293b));
     pylon.position.set(0, 0.18, 0);
     g.add(pylon);
-    // Tabung badan rudal aerodinamis
-    const body = new THREE.Mesh(G.missileBody, lam(0xe2e8f0));
+    // Tabung badan rudal: Tactical Military Olive Green (kontras dengan bodi roket putih)
+    const body = new THREE.Mesh(G.missileBody, lam(0x2d4030));
     body.position.set(0, -0.02, 0);
     g.add(body);
-    // Kepala hulu ledak (arah depan -Z)
-    const tip = new THREE.Mesh(G.missileTip, lam(0xe11d48));
+    // Kepala hulu ledak: Hazard Gold-Yellow (arah depan -Z, kontras dengan hidung merah roket)
+    const tip = new THREE.Mesh(G.missileTip, lam(0xfbbf24));
     tip.position.set(0, -0.02, -0.78);
     g.add(tip);
-    // Sirip silang penyeimbang (belakang +Z)
-    const fin1 = new THREE.Mesh(G.missileFin1, lam(0xd97706));
+    // Sirip silang penyeimbang: baja karbon gelap
+    const fin1 = new THREE.Mesh(G.missileFin1, lam(0x1e293b));
     fin1.position.set(0, -0.02, 0.46);
-    const fin2 = new THREE.Mesh(G.missileFin2, lam(0xd97706));
+    const fin2 = new THREE.Mesh(G.missileFin2, lam(0x1e293b));
     fin2.position.set(0, -0.02, 0.46);
     g.add(fin1); g.add(fin2);
-    // Ring status bercahaya emas
-    const band = new THREE.Mesh(G.missileBand, new THREE.MeshBasicMaterial({ color: 0xfbbf24 }));
+    // Ring status bercahaya hazard amber
+    const band = new THREE.Mesh(G.missileBand, new THREE.MeshBasicMaterial({ color: 0xf59e0b }));
     band.position.set(0, -0.02, -0.22);
     g.add(band);
   } else if (type === 'light') {
@@ -3674,14 +3678,15 @@ const activeMissiles = [];
 
 function createFlyingMissileMesh() {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(G.missileBody, lam(0xe2e8f0));
-  const tip = new THREE.Mesh(G.missileTip, lam(0xe11d48));
+  // Badan silinder rudal: Tactical Military Olive Green
+  const body = new THREE.Mesh(G.missileBody, lam(0x2d4030));
+  const tip = new THREE.Mesh(G.missileTip, lam(0xfbbf24));
   tip.position.z = -0.78;
-  const fin1 = new THREE.Mesh(G.missileFin1, lam(0xd97706));
+  const fin1 = new THREE.Mesh(G.missileFin1, lam(0x1e293b));
   fin1.position.z = 0.46;
-  const fin2 = new THREE.Mesh(G.missileFin2, lam(0xd97706));
+  const fin2 = new THREE.Mesh(G.missileFin2, lam(0x1e293b));
   fin2.position.z = 0.46;
-  const band = new THREE.Mesh(G.missileBand, new THREE.MeshBasicMaterial({ color: 0xfbbf24 }));
+  const band = new THREE.Mesh(G.missileBand, new THREE.MeshBasicMaterial({ color: 0xf59e0b }));
   band.position.z = -0.22;
   const glow = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff8811 }));
   glow.position.z = 0.65;
@@ -4678,6 +4683,7 @@ const SVG_ICONS = {
   eject: '<svg class="w-7 h-7 text-slate-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a8 8 0 0 0-8 8c0 1.5 3 2 4 2 2 0 3-1.5 4-1.5s2 1.5 4 1.5c1 0 4-.5 4-2a8 8 0 0 0-8-8z" fill="rgba(203,213,225,0.3)"/><path d="M4 11l8 8 8-8"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>',
   sit: '<svg class="w-7 h-7 text-amber-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 9V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v3"/><path d="M3 11v5a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0z"/><path d="M5 18v2M19 18v2"/></svg>',
   stand: '<svg class="w-7 h-7 text-emerald-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><path d="M12 7v7M9 22l3-7 3 7M8 12h8"/></svg>',
+  sleep: '<svg class="w-7 h-7 text-indigo-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="rgba(165,180,252,0.35)"/></svg>',
   rocket: '<svg class="w-7 h-7 text-cyan-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 5h6l-3 4 2 7-6-3-6 3 2-7-3-4h6z" fill="rgba(56,189,248,0.35)"/><polyline points="9 19 12 16 15 19" stroke-width="2.5"/></svg>',
   down: '<svg class="w-7 h-7 text-slate-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a8 8 0 0 0-8 8c0 1.5 3 2 4 2 2 0 3-1.5 4-1.5s2 1.5 4 1.5c1 0 4-.5 4-2a8 8 0 0 0-8-8z" fill="rgba(203,213,225,0.3)"/><path d="M4 11l8 8 8-8"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>',
   hammer: '<svg class="w-7 h-7 text-sky-200" viewBox="0 0 24 24" fill="currentColor"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6-9.6 9.6a1 1 0 0 0 0 1.4l1 1a1 1 0 0 0 1.4 0l9.6-9.6 1.6 1.6a1 1 0 0 0 1.4 0l1.6-1.6a1 1 0 0 0 0-1.4l-7.2-7.2a1 1 0 0 0-1.4 0z"/></svg>',
@@ -4761,6 +4767,76 @@ function toggleCraft() {
     toast('🔨 Mode Craft aktif! Kamera vertikal siap & gunakan analog untuk geser');
   }
 }
+let isSleeping = false;
+
+function isNearTent() {
+  if (mode !== 'play' || player.isSitting || isSleeping) return false;
+  // Posisi tenda di cx=9.8, cz=14.8, rotY=-0.35
+  const dx = player.x - 9.8, dz = player.z - 14.8;
+  const dist = Math.hypot(dx, dz);
+  if (dist < 1.3 || dist > 3.3) return false;
+  // Rotasi tenda rotY = -0.35
+  const c = Math.cos(-0.35), s = Math.sin(-0.35);
+  const lz = -dx * s + dz * c; // sumbu Z lokal tenda
+  // Persis di depan pintu tenda (lz < 0) atau di samping tenda (lz < 1.35, bukan di belakang)
+  return lz < 1.35;
+}
+
+function sleepInTent() {
+  if (isSleeping || mode !== 'play') return;
+  isSleeping = true;
+  const fadeEl = $('sleepFade');
+  if (fadeEl) fadeEl.style.opacity = '1';
+
+  // Hentikan gerakan pemain
+  player.vx = 0; player.vz = 0;
+
+  // Fase waktu selanjutnya (+1 siklus)
+  // Pagi (dawn 0.25) -> Siang (day 0.50) -> Sore (dusk 0.75) -> Malam (night 0.00) -> Pagi (dawn 0.25)
+  const curT = (tod.time % 1.0 + 1.0) % 1.0;
+  let nextKey = 'day', nextT = 0.50, nextName = 'Siang ☀️';
+  if (curT >= 0.125 && curT < 0.375) {
+    nextKey = 'day'; nextT = 0.50; nextName = 'Siang ☀️';
+  } else if (curT >= 0.375 && curT < 0.625) {
+    nextKey = 'dusk'; nextT = 0.75; nextName = 'Sore 🌇';
+  } else if (curT >= 0.625 && curT < 0.875) {
+    nextKey = 'night'; nextT = 0.00; nextName = 'Malam 🌙';
+  } else {
+    nextKey = 'dawn'; nextT = 0.25; nextName = 'Pagi 🌅';
+  }
+
+  // Fade out perlahan (1 detik)
+  setTimeout(() => {
+    // Majukan waktu ke fase berikutnya
+    tod.time = nextT;
+    tod.targetTime = nextT;
+    if (tod.mode !== 'auto') tod.mode = nextKey;
+
+    // Hilangkan efek hujan saat bangun tidur & pulihkan cuaca cerah
+    const wasRaining = (wx.mode === 'rain' || wx.k > 0.05);
+    if (wx.mode === 'rain') wx.mode = 'clear';
+    wx.target = 0;
+    wx.k = 0;
+    if (wx.mode === 'auto') {
+      wx.target = 0;
+      wx.timer = 90 + Math.random() * 60; // cuaca cerah bertahan
+    }
+    if (sfx.rainGain) sfx.rainGain.gain.value = 0;
+    campFireFuel = 1.0;
+    refreshWxUI();
+
+    toast(`💤 Bangun di waktu ${nextName}${wasRaining ? ' • Hujan telah reda' : ''}`);
+
+    // Layar fade in perlahan kembali
+    setTimeout(() => {
+      if (fadeEl) fadeEl.style.opacity = '0';
+      setTimeout(() => {
+        isSleeping = false;
+      }, 1000);
+    }, 700);
+  }, 1000);
+}
+
 function sitDown(seat) {
   if (player.parachute || mode !== 'play') return;
   player.isSitting = true;
@@ -4792,13 +4868,19 @@ function standUp() {
 }
 
 function interact() {
-  if (player.parachute) return;
+  if (player.parachute || isSleeping) return;
   if (mode === 'drive') { leaveVehicle(); return; }
   if (mode !== 'play') return;
 
   // Jika sedang duduk di bangku, interaksi berarti berdiri
   if (player.isSitting) {
     standUp();
+    return;
+  }
+
+  // Interaksi Tidur di Tenda jika berada persis di depan atau samping tenda
+  if (isNearTent()) {
+    sleepInTent();
     return;
   }
 
@@ -4889,6 +4971,14 @@ function applyChopHit() {
   }
 }
 function updatePlayer(dt) {
+  // Jika sedang tidur di dalam tenda, pemain diam
+  if (isSleeping) {
+    player.vy = 0;
+    player.grounded = true;
+    player.root.position.set(player.x, player.y, player.z);
+    return;
+  }
+
   // --- Mode Duduk Santai di Tempat Duduk Kayu ---
   if (player.isSitting && player.sittingSeat) {
     const a = getAxis();
@@ -6489,7 +6579,8 @@ const tod = {
 const TOD_TARGETS = { dawn: 0.25, day: 0.50, dusk: 0.75, night: 0.00 };
 
 // Palet 4 Fase Waktu (Pagi, Siang, Sore, Malam)
-const P_DAWN  = { sky: 0xf59873, fog: 0xf6a788, sun: 0xffd2a0, hemiS: 0xffd0b0, hemiG: 0x556345, sunI: 0.75, hemiI: 0.80, night: 0.0 };
+// Pagi fajar bernuansa golden-yellow cerah alami khas matahari terbit (bukan sunset kemerahan)
+const P_DAWN  = { sky: 0xfde28e, fog: 0xfee8a2, sun: 0xfff7a6, hemiS: 0xffefb8, hemiG: 0x5d7846, sunI: 0.80, hemiI: 0.82, night: 0.0 };
 const P_DAY   = { sky: 0x9ed4f8, fog: 0x9ed4f8, sun: 0xfff0d0, hemiS: 0xd6edff, hemiG: 0x587840, sunI: 0.70, hemiI: 0.75, night: 0.0 };
 // Sore hari bernuansa golden-hour hangat alami (menghilangkan kontras kasar & efek sharpen pada mesh/rumput)
 const P_DUSK  = { sky: 0xdc6b45, fog: 0xd67652, sun: 0xffa055, hemiS: 0xe08456, hemiG: 0x5c4832, sunI: 0.62, hemiI: 0.76, night: 0.0 };
@@ -6622,22 +6713,33 @@ function updateWeather(dt) {
   const pal = sampleSky(tod.time);
   const nightFactor = pal.night;
 
-  // Efek visual matahari sore (sunset illusion & corona jingga membara)
+  // Efek visual matahari pagi (sunrise golden glow) & sore (sunset illusion & corona jingga)
   let rawDusk = Math.max(0, 1 - Math.abs(tod.time - 0.75) / 0.13);
   const duskFactor = rawDusk * rawDusk * (3 - 2 * rawDusk); // smoothstep
-  sunSprite.scale.setScalar(175 + duskFactor * 65);
+  let rawDawn = Math.max(0, 1 - Math.abs(tod.time - 0.25) / 0.13);
+  const dawnFactor = rawDawn * rawDawn * (3 - 2 * rawDawn); // sunrise kekuningan
 
-  // Warna bola matahari: berangsur-angsur menjadi merah jingga saat senja
+  sunSprite.scale.setScalar(175 + (duskFactor + dawnFactor * 0.45) * 65);
+
+  // Warna bola matahari: emas-kuning cerah saat pagi sunrise, merah jingga saat senja sunset
   if (duskFactor > 0.001) {
     sunSprite.material.color.copy(pal.sun).lerp(new THREE.Color(0xff4411), duskFactor * 0.70);
+  } else if (dawnFactor > 0.001) {
+    sunSprite.material.color.copy(pal.sun).lerp(new THREE.Color(0xffea60), dawnFactor * 0.75);
   } else {
     sunSprite.material.color.copy(pal.sun);
   }
 
-  // Glare layar bernuansa hangat keemasan saat sore (transisi warna sepenuhnya halus tanpa pop)
+  // Glare layar: bernuansa kuning keemasan cerah saat sunrise pagi, dan oranye hangat saat sunset sore
   const gr = 255;
-  const gg = Math.round(THREE.MathUtils.lerp(250, 120, duskFactor));
-  const gb = Math.round(THREE.MathUtils.lerp(220, 20, duskFactor));
+  let gg = 250, gb = 220;
+  if (duskFactor > 0.001) {
+    gg = Math.round(THREE.MathUtils.lerp(250, 120, duskFactor));
+    gb = Math.round(THREE.MathUtils.lerp(220, 20, duskFactor));
+  } else if (dawnFactor > 0.001) {
+    gg = Math.round(THREE.MathUtils.lerp(250, 238, dawnFactor));
+    gb = Math.round(THREE.MathUtils.lerp(220, 115, dawnFactor)); // kuning keemasan khas fajar pagi
+  }
   glareEl.style.background = `radial-gradient(circle, rgba(${gr},${gg},${gb},.95) 0, rgba(${gr},${Math.round(gg * 0.75)},${Math.round(gb * 0.45)},.55) 6%, rgba(${gr},${Math.round(gg * 0.55)},${Math.round(gb * 0.25)},.2) 20%, rgba(255,180,60,0) 60%)`;
   washEl.style.background = `radial-gradient(ellipse at center, rgba(${gr},${Math.round(gg * 0.75)},${Math.round(gb * 0.45)},.5), rgba(${gr},${Math.round(gg * 0.55)},${Math.round(gb * 0.25)},.2))`;
 
@@ -6922,10 +7024,11 @@ function update(dt) {
       }
     }
 
+    const nearTent = (typeof isNearTent === 'function' && isNearTent());
     const canDriveInteract = (mode === 'drive');
     const canVehInteract = (mode === 'play' && veh.sim && parts.size > 0 && Math.hypot(player.x - veh.pos.x, player.z - veh.pos.z) <= 9);
     const canSeatInteract = (mode === 'play' && (player.isSitting || !!nearCampSeat));
-    const canInteract = canDriveInteract || canVehInteract || canSeatInteract;
+    const canInteract = !isSleeping && (canDriveInteract || canVehInteract || canSeatInteract || nearTent);
 
     $('btnAct').style.display = canInteract ? 'flex' : 'none';
     $('btnAct').classList.toggle('near', mode === 'play' && canInteract);
@@ -6936,6 +7039,11 @@ function update(dt) {
         if ($('actLbl').textContent !== 'Berdiri') {
           $('actLbl').textContent = 'Berdiri';
           $('actIco').innerHTML = SVG_ICONS.stand;
+        }
+      } else if (nearTent) {
+        if ($('actLbl').textContent !== 'Tidur') {
+          $('actLbl').textContent = 'Tidur';
+          $('actIco').innerHTML = SVG_ICONS.sleep;
         }
       } else if (nearCampSeat) {
         if ($('actLbl').textContent !== 'Duduk') {
