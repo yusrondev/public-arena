@@ -146,6 +146,10 @@
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
               <span id="soundLbl">Suara: On</span>
             </button>
+            <button id="btnSummonDragon" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-red-600 via-amber-600 to-orange-600 hover:from-red-500 hover:to-orange-500 active:scale-[0.98] font-bold text-sm transition-all flex items-center justify-center gap-2 text-white shadow-lg shadow-red-900/40">
+              <span class="text-base">🐉</span>
+              <span>Uji Coba: Panggil Naga Penjaga</span>
+            </button>
           </div>
         </div>
       </div>
@@ -384,7 +388,7 @@ applyQuality();
 const matCache = {};
 const lam = c => matCache[c] || (matCache[c] = new THREE.MeshLambertMaterial({ color: c }));
 // Ubah geometry jadi flat-shaded (non-indexed + normal per face) => tampilan low-poly tajam
-function flat(g) { const n = g.toNonIndexed(); n.computeVertexNormals(); g.dispose(); return n; }
+function flat(g) { const n = g.index ? g.toNonIndexed() : g; n.computeVertexNormals(); if (g !== n) g.dispose(); return n; }
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const TAU = Math.PI * 2;
 
@@ -1600,7 +1604,7 @@ const PHYS = { GRAV: 9.0, THRUST: 24, CL: .085, MAXLIFT_G: 3.0 };
 const veh = {
   pos: new THREE.Vector3(), quat: new THREE.Quaternion(), vel: new THREE.Vector3(), c: new THREE.Vector3(),
   stats: computeStats(), corners: [], thrusters: [], guns: [], shootCd: 0, rad: 1.6,
-  camF: new THREE.Vector3(0, 0, -1), impactCd: 0, sim: false
+  camF: new THREE.Vector3(0, 0, -1), camU: new THREE.Vector3(0, 1, 0), impactCd: 0, sim: false
 };
 const _f = new THREE.Vector3(), _u = new THREE.Vector3(), _r = new THREE.Vector3(), _a = new THREE.Vector3(), _t1 = new THREE.Vector3(), _n = new THREE.Vector3(), _t2 = new THREE.Vector3();
 function applyVehicleTransform() { vehGroup.position.copy(veh.pos); vehGroup.quaternion.copy(veh.quat); }
@@ -1772,7 +1776,7 @@ function prepareVehicle() {
 
   const spawnGroundY = surfaceY(SITE.x + veh.c.x, SITE.z + veh.c.z);
   veh.pos.set(SITE.x + veh.c.x, spawnGroundY + veh.c.y, SITE.z + veh.c.z);
-  veh.quat.identity(); veh.vel.set(0, 0, 0); veh.camF.set(0, 0, -1); veh.sim = true; applyVehicleTransform();
+  veh.quat.identity(); veh.vel.set(0, 0, 0); veh.camF.set(0, 0, -1); veh.camU.set(0, 1, 0); veh.sim = true; applyVehicleTransform();
 }
 function stepVehicle(dt, driving) {
   const st = veh.stats;
@@ -2221,6 +2225,9 @@ document.addEventListener('webkitfullscreenchange', () => { refreshFsUI(); apply
 addEventListener('keydown', e => {
   if (e.repeat) return; keys[e.code] = true;
   if (e.code === 'KeyC') toggleCraft();
+  if (e.code === 'KeyK' || e.code === 'KeyN') {
+    if (typeof summonDragonTest === 'function') summonDragonTest();
+  }
   if (e.code === 'KeyF') {
     if (mode === 'drive' && veh.guns && veh.guns.length > 0) input.shoot = true;
     else interact();
@@ -2339,6 +2346,8 @@ function interact() {
   if (!parts.size || !veh.sim) { toast('Belum ada kendaraan. Tekan Craft 🔨'); return; }
   if (Math.hypot(player.x - veh.pos.x, player.z - veh.pos.z) > 9) { toast('Terlalu jauh dari kendaraan'); return; }
   setMode('drive'); player.root.visible = false; playerBlob.visible = false; cam.drive.yaw = 0; cam.drive.pitch = 0;
+  _f.set(0, 0, -1).applyQuaternion(veh.quat); _u.set(0, 1, 0).applyQuaternion(veh.quat);
+  veh.camF.copy(_f); veh.camU.copy(_u);
   toast(veh.stats.thr ? 'Tahan GAS 🔥 • Joystick: pitch/belok' : 'Kendaraan belum punya roket!');
 }
 function leaveVehicle() {
@@ -2538,6 +2547,7 @@ function terrainOrPadY(x, z) { return surfaceY(x, z); }
 /* ---------- Kamera ---------- */
 const camTgt = new THREE.Vector3();
 function orbitCam(tgt, c) {
+  camera.up.set(0, 1, 0); // Kembalikan up kamera tegak lurus dunia saat mode play & build
   const cp = Math.cos(c.pitch);
   let x = tgt.x + Math.sin(c.yaw) * cp * c.dist, y = tgt.y + Math.sin(c.pitch) * c.dist, z = tgt.z + Math.cos(c.yaw) * cp * c.dist;
   const gy = surfaceY(x, z) + 1; if (y < gy) y = gy;
@@ -2546,12 +2556,31 @@ function orbitCam(tgt, c) {
 function updateCamera(dt) {
   if (mode === 'play') orbitCam(camTgt.set(player.x, player.y + 1.7, player.z), cam.play);
   else if (mode === 'build') orbitCam(camTgt.set(SITE.x, SITE.y + 1.5, SITE.z), cam.build);
-  else {                                         // chase cam di belakang kendaraan
-    _f.set(0, 0, -1).applyQuaternion(veh.quat); veh.camF.lerp(_f, 1 - Math.exp(-3 * dt)).normalize();
-    const c = cam.drive; if (!pointers.size) { c.yaw *= Math.exp(-2 * dt); c.pitch *= Math.exp(-2 * dt); }
-    _t1.copy(veh.camF).multiplyScalar(-c.dist); _t1.applyAxisAngle(Y_AXIS, c.yaw); _t1.y += c.dist * (.3 + c.pitch * .6);
+  else {                                         // chase cam di belakang kendaraan (Gimbal-Lock-Free 6-DoF)
+    _f.set(0, 0, -1).applyQuaternion(veh.quat);
+    _u.set(0, 1, 0).applyQuaternion(veh.quat);
+
+    // Smoothing vektor haluan dan vektor atas pesawat
+    const fRate = 1 - Math.exp(-4.5 * dt);
+    veh.camF.lerp(_f, fRate).normalize();
+    if (!veh.camU) veh.camU = new THREE.Vector3(0, 1, 0);
+    veh.camU.lerp(_u, fRate).normalize();
+
+    const c = cam.drive;
+    if (!pointers.size) { c.yaw *= Math.exp(-2 * dt); c.pitch *= Math.exp(-2 * dt); }
+
+    // Posisi kamera: selalu di BELAKANG vektor laju (-veh.camF) dan DI ATAS kanopi pesawat (+veh.camU)
+    // bukan menambah world Y semata (yang menyebabkan gimbal lock saat pesawat menukik 90°)
+    _t1.copy(veh.camF).multiplyScalar(-c.dist);
+    _t1.addScaledVector(veh.camU, c.dist * (0.28 + c.pitch * 0.35));
+    if (Math.abs(c.yaw) > 0.001) _t1.applyAxisAngle(veh.camU, c.yaw);
+
     camera.position.copy(veh.pos).add(_t1);
-    const gy = surfaceY(camera.position.x, camera.position.z) + 1.2; if (camera.position.y < gy) camera.position.y = gy;
+    const gy = surfaceY(camera.position.x, camera.position.z) + 1.2;
+    if (camera.position.y < gy) camera.position.y = gy;
+
+    // Up kamera mengikuti orientasi pesawat secara dinamis: bebas 100% dari gimbal lock & kamera terbalik saat menukik!
+    camera.up.copy(veh.camU);
     camera.lookAt(_t2.copy(veh.pos).addScaledVector(veh.camF, 5));
   }
   if (shake > 0.005) {
@@ -2685,6 +2714,9 @@ function drawMinimap() {
       ctx.beginPath(); ctx.arc(rx, ry, 1.8, 0, TAU); ctx.fill();
     }
   }
+
+  // Indikator Naga Penjaga di Minimap Radar
+  if (typeof drawDragonOnMinimap === 'function') drawDragonOnMinimap(ctx, focus, scale);
 
   // Fokus Pemain di Tengah (Pulsing ring + Core dot)
   ctx.fillStyle = 'rgba(0, 229, 255, 0.25)';
@@ -2881,6 +2913,838 @@ function playWhooshSound() {
   } catch (e) {}
 }
 
+/* ------------------------------------------------------------------ *
+ * NAGA LOW-POLY PENJAGA BATAS DUNIA (WORLD BOUNDARY GUARDIAN DRAGON)
+ * Diinspirasi naga crimson/ruby low-poly dengan sayap origami bergerigi,
+ * sisik bertingkat, perut bercahaya amber, tanduk obsidian melengkung,
+ * dan semburan api pembalik arah pesawat di batas arena.
+ * ------------------------------------------------------------------ */
+
+// --- Audio Sintesis: Raungan Naga & Desau Badai Api ---
+function playDragonRoar(pitch = 1.0) {
+  if (!sfx.on) return;
+  initAudio();
+  if (!sfx.ctx) return;
+  try {
+    const ctx = sfx.ctx, t0 = ctx.currentTime;
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const oscLFO = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+
+    osc1.type = 'sawtooth';
+    osc2.type = 'triangle';
+    osc1.frequency.setValueAtTime(115 * pitch, t0);
+    osc1.frequency.exponentialRampToValueAtTime(38 * pitch, t0 + 2.0);
+    osc2.frequency.setValueAtTime(85 * pitch, t0);
+    osc2.frequency.exponentialRampToValueAtTime(32 * pitch, t0 + 2.0);
+
+    // LFO vibrato getaran kerongkongan naga purba
+    oscLFO.frequency.setValueAtTime(18, t0);
+    oscLFO.frequency.linearRampToValueAtTime(9, t0 + 2.0);
+    lfoGain.gain.setValueAtTime(30 * pitch, t0);
+    oscLFO.connect(lfoGain);
+    lfoGain.connect(osc1.frequency);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(750, t0);
+    filter.frequency.exponentialRampToValueAtTime(140, t0 + 2.0);
+    filter.Q.value = 5.0;
+
+    gain.gain.setValueAtTime(0.001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.40, t0 + 0.14);
+    gain.gain.exponentialRampToValueAtTime(0.24, t0 + 1.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + 2.2);
+
+    osc1.connect(filter); osc2.connect(filter);
+    filter.connect(gain); gain.connect(ctx.destination);
+
+    osc1.start(t0); osc1.stop(t0 + 2.2);
+    osc2.start(t0); osc2.stop(t0 + 2.2);
+    oscLFO.start(t0); oscLFO.stop(t0 + 2.2);
+
+    if (sfx.noise) {
+      const nSrc = ctx.createBufferSource();
+      nSrc.buffer = sfx.noise;
+      const nFilter = ctx.createBiquadFilter();
+      nFilter.type = 'bandpass';
+      nFilter.frequency.setValueAtTime(800, t0);
+      nFilter.frequency.exponentialRampToValueAtTime(220, t0 + 1.8);
+      nFilter.Q.value = 1.6;
+      const nGain = ctx.createGain();
+      nGain.gain.setValueAtTime(0.001, t0);
+      nGain.gain.exponentialRampToValueAtTime(0.28, t0 + 0.15);
+      nGain.gain.exponentialRampToValueAtTime(0.001, t0 + 2.0);
+      nSrc.connect(nFilter); nFilter.connect(nGain); nGain.connect(ctx.destination);
+      nSrc.start(t0); nSrc.stop(t0 + 2.1);
+    }
+  } catch (e) {}
+}
+
+let lastDragonBreathTime = 0;
+function playDragonBreath() {
+  if (!sfx.on || !sfx.ctx || !sfx.noise) return;
+  const now = performance.now();
+  if (now - lastDragonBreathTime < 180) return;
+  lastDragonBreathTime = now;
+  try {
+    const ctx = sfx.ctx, t0 = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = sfx.noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(500 + Math.random() * 200, t0);
+    bp.Q.value = 1.3;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.01, t0);
+    g.gain.linearRampToValueAtTime(0.22, t0 + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28);
+    src.connect(bp); bp.connect(g); g.connect(ctx.destination);
+    src.start(t0); src.stop(t0 + 0.29);
+  } catch (e) {}
+}
+
+// --- Konstruksi Model Naga Low-Poly Megah (Three.js) ---
+function createLowPolyDragon() {
+  const dragon = {
+    root: new THREE.Group(),
+    bodyGroup: new THREE.Group(),
+    neck0: null,
+    neck1: null,
+    neck2: null,
+    head: null,
+    jaw: null,
+    mouthEmitter: null,
+    wingL: null,
+    wingR: null,
+    hindL: null,
+    hindR: null,
+    foreL: null,
+    foreR: null,
+    tailSegments: [],
+    tailSpade: null
+  };
+
+  // Material Palet Naga Low-Poly Faceted
+  const MAT_BODY = new THREE.MeshLambertMaterial({ color: 0x82151d }); // Crimson pekat
+  const MAT_BODY_DARK = new THREE.MeshLambertMaterial({ color: 0x540c14 }); // Ruby bayangan
+  const MAT_BELLY = new THREE.MeshLambertMaterial({ color: 0xf59e0b, emissive: 0x552200 }); // Pelat perut emas-amber
+  const MAT_HORN = new THREE.MeshLambertMaterial({ color: 0x1b1822 }); // Tanduk obsidian lava gelap
+  const MAT_WING_OUTER = new THREE.MeshLambertMaterial({ color: 0x99221a, side: THREE.DoubleSide });
+  const MAT_WING_MEMB = new THREE.MeshLambertMaterial({ color: 0xd9521e, emissive: 0x331000, side: THREE.DoubleSide });
+  const MAT_EYE = new THREE.MeshBasicMaterial({ color: 0xffe633 }); // Mata kuning menyala
+  const MAT_MOUTH = new THREE.MeshBasicMaterial({ color: 0xff3b00 }); // Kerongkongan api
+  const MAT_TEETH = new THREE.MeshLambertMaterial({ color: 0xf5f2e8 }); // Taring tajam
+  const MAT_CLAW = new THREE.MeshLambertMaterial({ color: 0x18141d }); // Cakar tajam
+  dragon.bodyGroup.rotation.y = Math.PI; // Selaraskan arah kepala naga dengan vektor depan lookAt (+Z)
+  dragon.root.add(dragon.bodyGroup);
+
+  // 1. DADA & TORSO (Muscular Chest & Pelvis)
+  // Chest faceted cylinder horizontal along Z (depan di -Z, belakang di +Z)
+  const chestGeo = flat(new THREE.CylinderGeometry(2.3, 1.8, 5.2, 7).rotateX(Math.PI / 2));
+  const chest = new THREE.Mesh(chestGeo, MAT_BODY);
+  chest.scale.set(1.2, 1.0, 1.0);
+  dragon.bodyGroup.add(chest);
+
+  // Pelat zirah perut emas-amber di bawah dada
+  const bellyGeo = flat(new THREE.CylinderGeometry(1.9, 1.5, 5.0, 5).rotateX(Math.PI / 2));
+  const belly = new THREE.Mesh(bellyGeo, MAT_BELLY);
+  belly.position.set(0, -0.65, 0);
+  belly.scale.set(1.05, 0.55, 1.0);
+  dragon.bodyGroup.add(belly);
+
+  // Pinggul / Pelvis menghubungkan dada ke ekor
+  const pelvisGeo = flat(new THREE.CylinderGeometry(1.6, 1.1, 3.4, 6).rotateX(Math.PI / 2));
+  const pelvis = new THREE.Mesh(pelvisGeo, MAT_BODY_DARK);
+  pelvis.position.set(0, -0.15, 3.2);
+  dragon.bodyGroup.add(pelvis);
+
+  // Duri punggung obsidian tajam di sepanjang punggung dada
+  for (let i = 0; i < 5; i++) {
+    const spH = 1.35 - i * 0.12;
+    const spGeo = flat(new THREE.ConeGeometry(0.3, spH, 4));
+    const spine = new THREE.Mesh(spGeo, MAT_HORN);
+    spine.position.set(0, 1.7 - i * 0.12, -1.8 + i * 0.95);
+    spine.rotation.x = 0.35; // condong ke belakang
+    dragon.bodyGroup.add(spine);
+  }
+
+  // 2. LEHER BERTINGKAT (3 Segmen Bersendi S-Curve: neck0 -> neck1 -> neck2)
+  const neck0 = new THREE.Group();
+  neck0.position.set(0, 0.9, -2.3);
+  dragon.bodyGroup.add(neck0);
+
+  const n0Geo = flat(new THREE.CylinderGeometry(1.4, 1.7, 2.4, 6).rotateX(-Math.PI / 3));
+  neck0.add(new THREE.Mesh(n0Geo, MAT_BODY));
+  const t0Geo = flat(new THREE.CylinderGeometry(1.1, 1.3, 2.3, 5).rotateX(-Math.PI / 3));
+  const t0Mesh = new THREE.Mesh(t0Geo, MAT_BELLY);
+  t0Mesh.position.set(0, -0.4, -0.2); t0Mesh.scale.set(0.9, 0.5, 0.9);
+  neck0.add(t0Mesh);
+  const spN0 = new THREE.Mesh(flat(new THREE.ConeGeometry(0.24, 0.95, 4)), MAT_HORN);
+  spN0.position.set(0, 1.1, 0.1); spN0.rotation.x = 0.4; neck0.add(spN0);
+  dragon.neck0 = neck0;
+
+  const neck1 = new THREE.Group();
+  neck1.position.set(0, 1.4, -1.6);
+  neck0.add(neck1);
+  const n1Geo = flat(new THREE.CylinderGeometry(1.1, 1.4, 2.4, 6).rotateX(-Math.PI / 3.5));
+  neck1.add(new THREE.Mesh(n1Geo, MAT_BODY));
+  const t1Mesh = new THREE.Mesh(t0Geo, MAT_BELLY);
+  t1Mesh.position.set(0, -0.35, -0.15); t1Mesh.scale.set(0.8, 0.5, 0.85); neck1.add(t1Mesh);
+  const spN1 = new THREE.Mesh(flat(new THREE.ConeGeometry(0.22, 0.85, 4)), MAT_HORN);
+  spN1.position.set(0, 1.0, 0.1); spN1.rotation.x = 0.4; neck1.add(spN1);
+  dragon.neck1 = neck1;
+
+  const neck2 = new THREE.Group();
+  neck2.position.set(0, 1.2, -1.5);
+  neck1.add(neck2);
+  const n2Geo = flat(new THREE.CylinderGeometry(0.95, 1.1, 2.0, 6).rotateX(-Math.PI / 4));
+  neck2.add(new THREE.Mesh(n2Geo, MAT_BODY));
+  dragon.neck2 = neck2;
+
+  // 3. KEPALA NAGA, TANDUK MEWAH & RAHANG PENYEMBUR API
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0, 0.7, -1.4);
+  neck2.add(headGroup);
+  dragon.head = headGroup;
+
+  // Tengkorak atas (Cranium)
+  const skull = new THREE.Mesh(flat(new THREE.BoxGeometry(1.6, 1.15, 1.8)), MAT_BODY);
+  skull.position.set(0, 0.35, 0);
+  headGroup.add(skull);
+
+  // Moncong / Rahang Atas (Snout)
+  const snoutGeo = flat(new THREE.CylinderGeometry(0.55, 0.95, 2.1, 5).rotateX(-Math.PI / 2));
+  const snout = new THREE.Mesh(snoutGeo, MAT_BODY);
+  snout.position.set(0, 0.1, -1.6);
+  snout.scale.set(1.1, 0.65, 1.0);
+  headGroup.add(snout);
+
+  // Alis bertulang tajam (Brow Ridges)
+  const browL = new THREE.Mesh(flat(new THREE.BoxGeometry(0.45, 0.3, 1.2)), MAT_BODY_DARK);
+  browL.position.set(-0.65, 0.7, -0.5); browL.rotation.y = -0.2; browL.rotation.z = 0.2; headGroup.add(browL);
+  const browR = new THREE.Mesh(flat(new THREE.BoxGeometry(0.45, 0.3, 1.2)), MAT_BODY_DARK);
+  browR.position.set(0.65, 0.7, -0.5); browR.rotation.y = 0.2; browR.rotation.z = -0.2; headGroup.add(browR);
+
+  // Mata Kristal Menyala Terang (Glowing Crystal Eyes)
+  const eyeGeo = flat(new THREE.OctahedronGeometry(0.24, 0));
+  const eyeL = new THREE.Mesh(eyeGeo, MAT_EYE);
+  eyeL.position.set(-0.72, 0.5, -0.6); eyeL.scale.set(0.6, 1.2, 1.5); eyeL.rotation.y = -0.3; headGroup.add(eyeL);
+  const eyeR = new THREE.Mesh(eyeGeo, MAT_EYE);
+  eyeR.position.set(0.72, 0.5, -0.6); eyeR.scale.set(0.6, 1.2, 1.5); eyeR.rotation.y = 0.3; headGroup.add(eyeR);
+
+  // Tanduk Lengkung Epik (Multi-Segment Obsidian Curved Horns)
+  function makeHorn(sign) {
+    const hGrp = new THREE.Group();
+    hGrp.position.set(sign * 0.65, 0.8, 0.5);
+    // segmen 1: naik & mundur
+    const s1 = new THREE.Mesh(flat(new THREE.ConeGeometry(0.38, 1.8, 5)), MAT_HORN);
+    s1.position.set(sign * 0.3, 0.7, 0.6);
+    s1.rotation.set(0.9, sign * 0.45, -sign * 0.4);
+    hGrp.add(s1);
+    // segmen 2: melengkung ke belakang
+    const s2 = new THREE.Mesh(flat(new THREE.ConeGeometry(0.26, 1.6, 5)), MAT_HORN);
+    s2.position.set(sign * 0.65, 1.7, 1.5);
+    s2.rotation.set(1.3, sign * 0.3, -sign * 0.25);
+    hGrp.add(s2);
+    // segmen 3: ujung lancip
+    const s3 = new THREE.Mesh(flat(new THREE.ConeGeometry(0.14, 1.3, 4)), MAT_HORN);
+    s3.position.set(sign * 0.85, 2.2, 2.4);
+    s3.rotation.set(1.6, sign * 0.15, -sign * 0.1);
+    hGrp.add(s3);
+    return hGrp;
+  }
+  headGroup.add(makeHorn(-1)); // Tanduk kiri
+  headGroup.add(makeHorn(1));  // Tanduk kanan
+
+  // Duri Pipi / Cheek Spikes
+  const chkL = new THREE.Mesh(flat(new THREE.ConeGeometry(0.2, 1.1, 4)), MAT_HORN);
+  chkL.position.set(-0.85, 0.1, 0.4); chkL.rotation.set(0.4, -1.1, 0.3); headGroup.add(chkL);
+  const chkR = new THREE.Mesh(flat(new THREE.ConeGeometry(0.2, 1.1, 4)), MAT_HORN);
+  chkR.position.set(0.85, 0.1, 0.4); chkR.rotation.set(0.4, 1.1, -0.3); headGroup.add(chkR);
+
+  // Taring Atas
+  for (const s of [-1, 1]) {
+    const fang = new THREE.Mesh(flat(new THREE.ConeGeometry(0.1, 0.4, 4)), MAT_TEETH);
+    fang.position.set(s * 0.45, -0.15, -2.2); fang.rotation.x = Math.PI; headGroup.add(fang);
+    const fang2 = new THREE.Mesh(flat(new THREE.ConeGeometry(0.08, 0.32, 4)), MAT_TEETH);
+    fang2.position.set(s * 0.55, -0.12, -1.6); fang2.rotation.x = Math.PI; headGroup.add(fang2);
+  }
+
+  // RAHANG BAWAH (Bergerak membuka lebar saat meraung & menyemburkan api)
+  const jawGroup = new THREE.Group();
+  jawGroup.position.set(0, -0.1, -0.4);
+  headGroup.add(jawGroup);
+  dragon.jaw = jawGroup;
+
+  const jawGeo = flat(new THREE.CylinderGeometry(0.45, 0.8, 2.1, 5).rotateX(-Math.PI / 2));
+  const jawMesh = new THREE.Mesh(jawGeo, MAT_BODY_DARK);
+  jawMesh.position.set(0, -0.18, -1.1);
+  jawMesh.scale.set(1.0, 0.45, 1.0);
+  jawGroup.add(jawMesh);
+
+  // Pelat Kerongkongan Berapi (Glowing Fiery Throat)
+  const throatMesh = new THREE.Mesh(flat(new THREE.PlaneGeometry(0.7, 1.5).rotateX(Math.PI / 2)), MAT_MOUTH);
+  throatMesh.position.set(0, -0.05, -1.0);
+  jawGroup.add(throatMesh);
+
+  // Taring Bawah
+  for (const s of [-1, 1]) {
+    const lfang = new THREE.Mesh(flat(new THREE.ConeGeometry(0.09, 0.38, 4)), MAT_TEETH);
+    lfang.position.set(s * 0.4, 0.05, -1.9); jawGroup.add(lfang);
+  }
+
+  // Dummy Emitter Api Mulut
+  const mouthEmitter = new THREE.Object3D();
+  mouthEmitter.position.set(0, -0.1, -2.4);
+  jawGroup.add(mouthEmitter);
+  dragon.mouthEmitter = mouthEmitter;
+
+  // 4. SAYAP LOW-POLY MEWAH (Faceted Webbing Wings)
+  function makeWing(sign) {
+    const wingRoot = new THREE.Group();
+    wingRoot.position.set(sign * 1.6, 1.1, -0.8);
+    dragon.bodyGroup.add(wingRoot);
+
+    // Tulang Lengan Atas (Upper Arm)
+    const armGeo = flat(new THREE.CylinderGeometry(0.32, 0.24, 4.4, 5));
+    const arm = new THREE.Mesh(armGeo, MAT_BODY);
+    arm.position.set(sign * 2.1, 0.9, 0.2);
+    arm.rotation.z = -sign * 0.95;
+    arm.rotation.y = -sign * 0.2;
+    wingRoot.add(arm);
+
+    // Sendi Siku (Elbow)
+    const elbow = new THREE.Group();
+    elbow.position.set(sign * 3.8, 1.7, 0.4);
+    wingRoot.add(elbow);
+
+    // Lengan Bawah / Tulang Sayap Utama
+    const foreGeo = flat(new THREE.CylinderGeometry(0.24, 0.18, 4.6, 5));
+    const fore = new THREE.Mesh(foreGeo, MAT_BODY);
+    fore.position.set(sign * 2.0, 0.8, 0.3);
+    fore.rotation.z = sign * 0.8;
+    fore.rotation.y = sign * 0.15;
+    elbow.add(fore);
+
+    // Sendi Pergelangan (Wrist / Knuckle)
+    const wrist = new THREE.Group();
+    wrist.position.set(sign * 3.9, 1.6, 0.5);
+    elbow.add(wrist);
+
+    // Cakar Jempol Sayap Atas (Wing Thumb Claw)
+    const thumbClaw = new THREE.Mesh(flat(new THREE.ConeGeometry(0.18, 0.9, 4)), MAT_HORN);
+    thumbClaw.position.set(sign * 0.2, 0.8, -0.5);
+    thumbClaw.rotation.set(-0.8, 0, -sign * 0.4);
+    wrist.add(thumbClaw);
+
+    // 3 Batang Tulang Jari Sayap (Wing Finger Spars)
+    // Jari 1: Atas depan
+    const f1 = new THREE.Mesh(flat(new THREE.ConeGeometry(0.16, 5.8, 4)), MAT_HORN);
+    f1.position.set(sign * 1.8, 2.6, -0.2);
+    f1.rotation.z = -sign * 0.55;
+    f1.rotation.x = 0.3;
+    wrist.add(f1);
+
+    // Jari 2: Utama / Ujung sayap terpanjang
+    const f2 = new THREE.Mesh(flat(new THREE.ConeGeometry(0.18, 7.5, 4)), MAT_HORN);
+    f2.position.set(sign * 3.4, 1.2, 1.8);
+    f2.rotation.z = -sign * 1.15;
+    f2.rotation.x = 0.5;
+    wrist.add(f2);
+
+    // Jari 3: Bawah belakang
+    const f3 = new THREE.Mesh(flat(new THREE.ConeGeometry(0.16, 6.2, 4)), MAT_HORN);
+    f3.position.set(sign * 1.8, -1.2, 3.2);
+    f3.rotation.z = -sign * 1.65;
+    f3.rotation.x = 0.7;
+    wrist.add(f3);
+
+    // Webbing / Membran Sayap Low-Poly Origami (Panel Segitiga Faceted)
+    const membraneGeo = new THREE.BufferGeometry();
+    const verts = [];
+    function addTri(a, b, c) {
+      verts.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+      verts.push(a.x, a.y, a.z, c.x, c.y, c.z, b.x, b.y, b.z); // double-sided faces
+    }
+
+    const pWrist = new THREE.Vector3(0, 0, 0);
+    const pF1 = new THREE.Vector3(sign * 2.8, 4.8, -0.4);
+    const pF2 = new THREE.Vector3(sign * 6.5, 2.0, 2.6);
+    const pF3 = new THREE.Vector3(sign * 3.4, -2.2, 4.8);
+    const pMid1 = new THREE.Vector3(sign * 4.6, 3.6, 1.2);
+    const pMid2 = new THREE.Vector3(sign * 5.2, 0.2, 3.8);
+    const pElbow = new THREE.Vector3(-sign * 3.9, -1.6, -0.5);
+
+    addTri(pWrist, pF1, pMid1);
+    addTri(pWrist, pMid1, pF2);
+    addTri(pWrist, pF2, pMid2);
+    addTri(pWrist, pMid2, pF3);
+    addTri(pElbow, pWrist, pF3);
+
+    membraneGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    membraneGeo.computeVertexNormals();
+
+    const membrane = new THREE.Mesh(membraneGeo, MAT_WING_MEMB);
+    wrist.add(membrane);
+
+    // Membran Lengan Dalam (Inner Arm Flap)
+    const armFlapGeo = new THREE.BufferGeometry();
+    const armVerts = [];
+    function addArmTri(a, b, c) {
+      armVerts.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+      armVerts.push(a.x, a.y, a.z, c.x, c.y, c.z, b.x, b.y, b.z);
+    }
+    const pRoot = new THREE.Vector3(-sign * 3.8, -1.7, -0.4);
+    addArmTri(pRoot, new THREE.Vector3(0, 0, 0), new THREE.Vector3(-sign * 0.5, -1.0, 3.5));
+    armFlapGeo.setAttribute('position', new THREE.Float32BufferAttribute(armVerts, 3));
+    armFlapGeo.computeVertexNormals();
+    const armFlap = new THREE.Mesh(armFlapGeo, MAT_WING_OUTER);
+    elbow.add(armFlap);
+
+    return { root: wingRoot, elbow, wrist };
+  }
+  dragon.wingL = makeWing(-1); // Sayap kiri (-X)
+  dragon.wingR = makeWing(1);  // Sayap kanan (+X)
+
+  // 5. KAKI DEPAN & KAKI BELAKANG BERCAKAR OBSIDIAN
+  function makeForeLeg(sign) {
+    const fGrp = new THREE.Group();
+    fGrp.position.set(sign * 1.4, -0.4, -1.5);
+    dragon.bodyGroup.add(fGrp);
+
+    const bicep = new THREE.Mesh(flat(new THREE.CylinderGeometry(0.45, 0.32, 2.2, 5)), MAT_BODY);
+    bicep.position.set(sign * 0.25, -0.8, -0.2);
+    bicep.rotation.set(-0.4, 0, sign * 0.2);
+    fGrp.add(bicep);
+
+    const fore = new THREE.Mesh(flat(new THREE.CylinderGeometry(0.3, 0.22, 2.0, 5)), MAT_BODY_DARK);
+    fore.position.set(sign * 0.35, -2.1, -0.6);
+    fore.rotation.set(0.6, 0, -sign * 0.1);
+    fGrp.add(fore);
+
+    const clawGrp = new THREE.Group();
+    clawGrp.position.set(sign * 0.35, -2.9, -1.1);
+    fGrp.add(clawGrp);
+    for (let c = -1; c <= 1; c++) {
+      const claw = new THREE.Mesh(flat(new THREE.ConeGeometry(0.11, 0.65, 4)), MAT_CLAW);
+      claw.position.set(c * 0.18, 0, -0.3);
+      claw.rotation.x = -1.2;
+      clawGrp.add(claw);
+    }
+    return fGrp;
+  }
+  dragon.foreL = makeForeLeg(-1);
+  dragon.foreR = makeForeLeg(1);
+
+  function makeHindLeg(sign) {
+    const legRoot = new THREE.Group();
+    legRoot.position.set(sign * 1.5, -0.6, 2.6);
+    dragon.bodyGroup.add(legRoot);
+
+    const thigh = new THREE.Mesh(flat(new THREE.CylinderGeometry(0.7, 0.45, 2.6, 5)), MAT_BODY);
+    thigh.position.set(sign * 0.4, -0.9, -0.4);
+    thigh.rotation.set(-0.6, 0, sign * 0.25);
+    legRoot.add(thigh);
+
+    const shin = new THREE.Mesh(flat(new THREE.CylinderGeometry(0.4, 0.25, 2.8, 5)), MAT_BODY_DARK);
+    shin.position.set(sign * 0.5, -2.4, 0.5);
+    shin.rotation.set(0.7, 0, sign * 0.15);
+    legRoot.add(shin);
+
+    const foot = new THREE.Group();
+    foot.position.set(sign * 0.5, -3.5, -0.2);
+    legRoot.add(foot);
+
+    for (let i = -1; i <= 1; i++) {
+      const claw = new THREE.Mesh(flat(new THREE.ConeGeometry(0.13, 0.75, 4)), MAT_CLAW);
+      claw.position.set(i * 0.22, -0.1, -0.45);
+      claw.rotation.x = -1.2;
+      foot.add(claw);
+    }
+    return legRoot;
+  }
+  dragon.hindL = makeHindLeg(-1);
+  dragon.hindR = makeHindLeg(1);
+
+  // 6. EKOR PANJANG SINUOUS DENGAN SIRIP SPADE ARROWHEAD
+  let parentSeg = dragon.bodyGroup;
+  for (let i = 0; i < 5; i++) {
+    const tSeg = new THREE.Group();
+    if (i === 0) tSeg.position.set(0, 0.1, 4.5);
+    else tSeg.position.set(0, -0.05, 2.1 - i * 0.1);
+    parentSeg.add(tSeg);
+
+    const rTop = 1.0 - i * 0.16;
+    const rBot = 0.84 - i * 0.15;
+    const len = 2.4 - i * 0.1;
+    const tMesh = new THREE.Mesh(flat(new THREE.CylinderGeometry(rTop, rBot, len, 6).rotateX(Math.PI / 2)), MAT_BODY);
+    tMesh.position.set(0, 0, len * 0.45);
+    tSeg.add(tMesh);
+
+    // Duri punggung ekor
+    const sp = new THREE.Mesh(flat(new THREE.ConeGeometry(0.22 - i * 0.03, 1.0 - i * 0.12, 4)), MAT_HORN);
+    sp.position.set(0, rTop + 0.35, len * 0.45);
+    sp.rotation.x = 0.5;
+    tSeg.add(sp);
+
+    dragon.tailSegments.push(tSeg);
+    parentSeg = tSeg;
+  }
+
+  // Sirip Spade / Diamond Arrowhead di Ujung Ekor (seperti di referensi)
+  const spadeGeo = flat(new THREE.CylinderGeometry(0, 1.35, 2.4, 4).rotateX(Math.PI / 2));
+  const spade = new THREE.Mesh(spadeGeo, MAT_HORN);
+  spade.position.set(0, 0.1, 2.2);
+  spade.scale.set(1.4, 0.18, 1.1); // Diamond pipih tajam
+  dragon.tailSegments[4].add(spade);
+  dragon.tailSpade = spade;
+
+  dragon.root.visible = false;
+  scene.add(dragon.root);
+  return dragon;
+}
+
+const dragon = createLowPolyDragon();
+
+// Dynamic PointLight di mulut naga untuk menyinari dunia & pesawat saat semburan api
+const dragonFireLight = new THREE.PointLight(0xff5500, 0, 95, 1.9);
+scene.add(dragonFireLight);
+
+// Bola Api Volumetrik Low-Poly (Expanding Dodecahedrons)
+const FIREBALL_COUNT = 10;
+const dragonFireballs = [];
+const fbGeo = flat(new THREE.DodecahedronGeometry(1.4, 0));
+const fbMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+for (let i = 0; i < FIREBALL_COUNT; i++) {
+  const fb = new THREE.Mesh(fbGeo, fbMat);
+  fb.visible = false;
+  scene.add(fb);
+  dragonFireballs.push({
+    mesh: fb,
+    life: 0,
+    maxLife: 1,
+    vel: new THREE.Vector3(),
+    rot: new THREE.Vector3()
+  });
+}
+
+// State Machine Penjaga Batas Dunia
+const dragonState = {
+  active: false,
+  state: 'IDLE', // 'IDLE' | 'APPROACH' | 'BREATHE' | 'RETREAT'
+  pos: new THREE.Vector3(0, 200, 0),
+  vel: new THREE.Vector3(),
+  wingPhase: 0,
+  timer: 0,
+  cooldown: 0,
+  testMode: false
+};
+
+// Fungsi membalikkan arah pesawat secara aerodinamis & halus
+function dragonDeflectVehicle(dt) {
+  if (mode !== 'drive' || !dragonState.active || dragonState.state !== 'BREATHE') return;
+  // Vektor menuju pusat map (0, 0, 0)
+  const toCenterX = -veh.pos.x, toCenterZ = -veh.pos.z;
+  const distC = Math.hypot(toCenterX, toCenterZ) || 1;
+  const nx = toCenterX / distC, nz = toCenterZ / distC;
+  _t1.set(nx, 0.08, nz).normalize();
+
+  // Orientasikan quaternion pesawat menuju pusat map secara mantap & halus
+  _q2.setFromUnitVectors(new THREE.Vector3(0, 0, -1), _t1);
+  veh.quat.slerp(_q2, Math.min(1, dt * 3.5)).normalize();
+
+  // Dorong kecepatan pesawat memutar balik ke arah dalam arena
+  const spd = Math.max(veh.vel.length(), 24);
+  veh.vel.lerp(new THREE.Vector3(nx * spd, Math.max(veh.vel.y, 2), nz * spd), Math.min(1, dt * 3.0));
+
+  // Anti bentur bukit: pastikan elevasi aman jika terlalu rendah
+  const gy = surfaceY(veh.pos.x, veh.pos.z);
+  if (veh.pos.y < gy + 6) {
+    veh.pos.y = gy + 6;
+    veh.vel.y = Math.max(veh.vel.y, 4);
+  }
+
+  // Efek guncangan terkendali & panas layar
+  shake = Math.min(0.35, shake + dt * 1.5);
+  washEl.style.opacity = '0.55';
+  washEl.style.background = 'radial-gradient(circle, rgba(255,100,20,0.65), rgba(255,30,0,0.35))';
+}
+
+function dragonDeflectPlayer(dt) {
+  if (!dragonState.active || dragonState.state !== 'BREATHE') return;
+  const toCenterX = -player.x, toCenterZ = -player.z;
+  const distC = Math.hypot(toCenterX, toCenterZ) || 1;
+  const nx = toCenterX / distC, nz = toCenterZ / distC;
+
+  player.x += nx * 24 * dt;
+  player.z += nz * 24 * dt;
+  player.yaw = Math.atan2(nx, nz);
+  player.vy = Math.max(player.vy, 4);
+
+  shake = Math.min(0.30, shake + dt * 1.2);
+  washEl.style.opacity = '0.50';
+  washEl.style.background = 'radial-gradient(circle, rgba(255,100,20,0.65), rgba(255,30,0,0.35))';
+}
+
+function startDragonEncounter(focus, focusFwd, isTest = false) {
+  dragonState.active = true;
+  dragonState.state = 'APPROACH';
+  dragonState.timer = 0;
+  dragonState.testMode = isTest;
+
+  // Posisi spawn: di depan arah hadap pemain dan di atas langit
+  const spawnDir = focusFwd.lengthSq() > 0.01 ? focusFwd.clone().normalize() : new THREE.Vector3(0, 0, -1);
+  dragonState.pos.copy(focus).addScaledVector(spawnDir, isTest ? 60 : 105);
+  dragonState.pos.y = Math.max(dragonState.pos.y + (isTest ? 18 : 34), surfaceY(dragonState.pos.x, dragonState.pos.z) + 26);
+
+  dragon.root.position.copy(dragonState.pos);
+  dragon.root.lookAt(focus.x, focus.y + 1, focus.z);
+  dragon.root.visible = true;
+
+  playDragonRoar(0.92);
+  shake = Math.max(shake, 0.40);
+  toast(isTest ? '🐉 Naga Penjaga bangkit menantangmu!' : '⚠️ PERINGATAN: Batas dunia! Naga Penjaga bangkit mengusirmu!');
+}
+
+function summonDragonTest() {
+  const focus = (mode === 'drive') ? veh.pos : player;
+  const focusFwd = (mode === 'drive') ? _f : new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+  startDragonEncounter(focus, focusFwd, true);
+}
+
+// Indikator radar naga
+function drawDragonOnMinimap(ctx, focus, scale) {
+  if (!dragonState.active || !dragon.root.visible) return;
+  const ddx = dragonState.pos.x - focus.x, ddz = dragonState.pos.z - focus.z;
+  const dDist = Math.hypot(ddx, ddz);
+  if (dDist * scale <= MM_RAD - 3) {
+    const dx = MM_CX + ddx * scale, dy = MM_CY + ddz * scale;
+    // Lingkaran aura merah-oranye berdenyut
+    const pulseR = 5 + Math.sin(time * 8) * 1.5;
+    ctx.fillStyle = 'rgba(255, 68, 0, 0.45)';
+    ctx.beginPath(); ctx.arc(dx, dy, pulseR + 2, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ff2b00';
+    ctx.beginPath(); ctx.arc(dx, dy, pulseR, 0, TAU); ctx.fill();
+    // Ikon chevron emas di dalam titik
+    ctx.fillStyle = '#ffeb3b';
+    ctx.beginPath();
+    ctx.moveTo(dx, dy - 4);
+    ctx.lineTo(dx + 3, dy + 2);
+    ctx.lineTo(dx, dy);
+    ctx.lineTo(dx - 3, dy + 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function updateDragon(dt) {
+  if (dragonState.cooldown > 0) dragonState.cooldown -= dt;
+
+  // Objek fokus: Pesawat jika mode drive, atau pemain jika mode play
+  const focus = (mode === 'drive') ? veh.pos : player;
+  const focusFwd = (mode === 'drive') ? _f : new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+  const r = Math.hypot(focus.x, focus.z);
+  const maxCoord = Math.max(Math.abs(focus.x), Math.abs(focus.z));
+
+  const BOUNDARY_TRIGGER = 760; // Batas keluar map
+
+  // 1. STATE MACHINE
+  if (dragonState.state === 'IDLE') {
+    dragonFireLight.intensity = 0;
+    // Cek batas map jika bukan mode test
+    if ((maxCoord > BOUNDARY_TRIGGER || r > BOUNDARY_TRIGGER) && dragonState.cooldown <= 0) {
+      startDragonEncounter(focus, focusFwd, false);
+    }
+  } else if (dragonState.state === 'APPROACH') {
+    dragonState.timer += dt;
+    // Target standoff: 26 unit di depan pesawat pemain & sedikit di atas
+    const standoffPos = new THREE.Vector3().copy(focus).addScaledVector(focusFwd, 26);
+    standoffPos.y = Math.max(standoffPos.y + 6, surfaceY(standoffPos.x, standoffPos.z) + 16);
+
+    // Terbang menukik ke arah standoff point
+    const toStandoff = new THREE.Vector3().subVectors(standoffPos, dragonState.pos);
+    const dStandoff = toStandoff.length();
+    const approachSpeed = 58;
+    dragonState.vel.copy(toStandoff).normalize().multiplyScalar(approachSpeed);
+    dragonState.pos.addScaledVector(dragonState.vel, dt);
+
+    // Naga menghadap ke arah pemain
+    dragon.root.position.copy(dragonState.pos);
+    dragon.root.lookAt(focus.x, focus.y + 1, focus.z);
+
+    // Transisi ke BREATHE jika sudah dekat atau timer > 2.8s
+    if (dStandoff < 22 || dragonState.timer > 2.8) {
+      dragonState.state = 'BREATHE';
+      dragonState.timer = 0;
+      playDragonRoar(0.92);
+      toast('🔥 NAGA PENJAGA MENYEMBURKAN API! Pesawatmu berputar arah!');
+    }
+  } else if (dragonState.state === 'BREATHE') {
+    dragonState.timer += dt;
+
+    // Naga hovering di hadapan pemain menghadap tepat ke pesawat
+    const hoverPos = new THREE.Vector3().copy(focus).addScaledVector(focusFwd, 24);
+    hoverPos.y = Math.max(hoverPos.y + 4, surfaceY(hoverPos.x, hoverPos.z) + 14);
+    dragonState.pos.lerp(hoverPos, Math.min(1, dt * 4.5));
+    dragon.root.position.copy(dragonState.pos);
+    dragon.root.lookAt(focus.x, focus.y + 1, focus.z);
+
+    // Buka rahang lebar-lebar & nyalakan PointLight
+    dragon.jaw.rotation.x = THREE.MathUtils.lerp(dragon.jaw.rotation.x, 0.65, dt * 10);
+    dragonFireLight.position.set(0, 0, 0);
+    dragon.mouthEmitter.getWorldPosition(dragonFireLight.position);
+    dragonFireLight.intensity = 4.2 + Math.random() * 2.2;
+
+    // Semburan Partikel Api & Asap Padat
+    playDragonBreath();
+    const mouthPos = dragonFireLight.position;
+    const fireDir = new THREE.Vector3().subVectors(focus, mouthPos).normalize();
+
+    for (let p = 0; p < 5; p++) {
+      const spd = 48 + Math.random() * 24;
+      const fvx = fireDir.x * spd + (Math.random() - 0.5) * 12;
+      const fvy = fireDir.y * spd + (Math.random() - 0.5) * 12;
+      const fvz = fireDir.z * spd + (Math.random() - 0.5) * 12;
+      fireFX.emit(
+        mouthPos.x + (Math.random() - 0.5) * 0.8,
+        mouthPos.y + (Math.random() - 0.5) * 0.8,
+        mouthPos.z + (Math.random() - 0.5) * 0.8,
+        fvx, fvy, fvz,
+        0.55 + Math.random() * 0.25,
+        [1.0, 0.98, 0.8], // Plasma putih-emas panas
+        [0.9, 0.12, 0.01], // Bara merah api pekat
+        -1.5
+      );
+    }
+    // Asap dan abu
+    if (Math.random() < 0.45) {
+      dustFX.emit(
+        mouthPos.x, mouthPos.y, mouthPos.z,
+        fireDir.x * 20 + (Math.random() - 0.5) * 8,
+        fireDir.y * 20 + (Math.random() - 0.5) * 8,
+        fireDir.z * 20 + (Math.random() - 0.5) * 8,
+        0.8,
+        0x332211, 0x111111, 0.5
+      );
+    }
+
+    // Spawn Bola Api Low-Poly yang membesar & bergulir
+    if (Math.random() < 0.35) {
+      for (const fb of dragonFireballs) {
+        if (fb.life <= 0) {
+          fb.life = fb.maxLife = 0.55;
+          fb.mesh.visible = true;
+          fb.mesh.position.copy(mouthPos);
+          fb.mesh.scale.setScalar(0.4);
+          fb.vel.copy(fireDir).multiplyScalar(42 + Math.random() * 15);
+          fb.rot.set(Math.random() * 8, Math.random() * 8, Math.random() * 8);
+          break;
+        }
+      }
+    }
+
+    // Aksi pembalik arah pesawat / pemain
+    if (mode === 'drive') dragonDeflectVehicle(dt);
+    else dragonDeflectPlayer(dt);
+
+    // Cek apakah pesawat sudah berhasil berbalik arah ke pusat map (dot product > 0.65) atau waktu semburan selesai
+    const toCenterX = -focus.x, toCenterZ = -focus.z;
+    const lenC = Math.hypot(toCenterX, toCenterZ) || 1;
+    const facingCenter = (focusFwd.x * (toCenterX / lenC) + focusFwd.z * (toCenterZ / lenC)) > 0.65;
+
+    if (dragonState.timer >= 2.6 || (dragonState.timer >= 1.4 && facingCenter)) {
+      dragonState.state = 'RETREAT';
+      dragonState.timer = 0;
+      playDragonRoar(1.15);
+      toast('✅ Pesawatmu selamat berbalik arah menuju arena aman!');
+    }
+  } else if (dragonState.state === 'RETREAT') {
+    dragonState.timer += dt;
+    // Tutup rahang & padamkan lampu mulut
+    dragon.jaw.rotation.x = THREE.MathUtils.lerp(dragon.jaw.rotation.x, 0.05, dt * 5);
+    dragonFireLight.intensity = Math.max(0, dragonFireLight.intensity - dt * 8);
+
+    // Kembalikan efek glare layar ke normal
+    if (parseFloat(washEl.style.opacity || 0) > 0.05) {
+      washEl.style.opacity = Math.max(0, parseFloat(washEl.style.opacity) - dt * 1.5).toFixed(3);
+    }
+
+    // Naga berputar naik ke angkasa luar / awan tinggi dengan kecepatan tinggi
+    const climbVx = Math.sin(time * 1.5) * 12;
+    const climbVy = 42;
+    const climbVz = Math.cos(time * 1.5) * 12;
+    dragonState.pos.x += climbVx * dt;
+    dragonState.pos.y += climbVy * dt;
+    dragonState.pos.z += climbVz * dt;
+    dragon.root.position.copy(dragonState.pos);
+    dragon.root.lookAt(dragonState.pos.x + climbVx, dragonState.pos.y + climbVy, dragonState.pos.z + climbVz);
+
+    if (dragonState.pos.y > 320 || dragonState.timer > 4.0) {
+      dragon.root.visible = false;
+      dragonState.active = false;
+      dragonState.state = 'IDLE';
+      dragonState.cooldown = 8.0;
+      washEl.style.background = 'radial-gradient(ellipse at center, rgba(255,244,214,.6), rgba(255,236,190,.3))';
+    }
+  }
+
+  // 2. ANIMASI PROCEDURAL ANATOMI NAGA (Saat Naga Aktif)
+  if (dragon.root.visible) {
+    const isHovering = (dragonState.state === 'BREATHE');
+    const flapSpeed = isHovering ? 5.2 : (dragonState.state === 'RETREAT' ? 4.8 : 3.4);
+    dragonState.wingPhase += dt * flapSpeed;
+
+    const flap = Math.sin(dragonState.wingPhase);
+    // Gerakan kepakan sayap atas-bawah
+    const wingAngle = flap * 0.65;
+    dragon.wingL.root.rotation.z = wingAngle;
+    dragon.wingR.root.rotation.z = -wingAngle;
+
+    // Pitch sayap (aerodynamic feathering)
+    const pitchAngle = Math.cos(dragonState.wingPhase) * 0.18;
+    dragon.wingL.root.rotation.y = 0.2 + pitchAngle;
+    dragon.wingR.root.rotation.y = -0.2 - pitchAngle;
+
+    // Tekukan siku sayap (melipat saat upstroke, membentang penuh saat downstroke)
+    dragon.wingL.elbow.rotation.z = -0.3 + (flap < 0 ? -0.45 * -flap : 0.2 * flap);
+    dragon.wingR.elbow.rotation.z = 0.3 + (flap < 0 ? 0.45 * -flap : -0.2 * flap);
+
+    // Gerakan Sinuous Gelombang Ekor
+    for (let i = 0; i < dragon.tailSegments.length; i++) {
+      const ph = time * 3.6 - i * 0.65;
+      dragon.tailSegments[i].rotation.y = Math.sin(ph) * (0.18 + i * 0.06);
+      dragon.tailSegments[i].rotation.x = Math.cos(ph) * 0.08;
+    }
+
+    // Leher S-curve mengayun lentur
+    dragon.neck0.rotation.y = Math.sin(time * 2.2) * 0.08;
+    dragon.neck1.rotation.y = Math.sin(time * 2.2 + 0.4) * 0.08;
+    dragon.neck2.rotation.y = Math.sin(time * 2.2 + 0.8) * 0.08;
+
+    // Kaki belakang mencengkeram saat hovering
+    const legPose = isHovering ? 0.5 : -0.5;
+    dragon.hindL.rotation.x = THREE.MathUtils.lerp(dragon.hindL.rotation.x, legPose, dt * 5);
+    dragon.hindR.rotation.x = THREE.MathUtils.lerp(dragon.hindR.rotation.x, legPose, dt * 5);
+  }
+
+  // 3. UPDATE BOLA API LOW-POLY
+  for (const fb of dragonFireballs) {
+    if (fb.life > 0) {
+      fb.life -= dt;
+      if (fb.life <= 0) { fb.mesh.visible = false; continue; }
+      fb.mesh.position.addScaledVector(fb.vel, dt);
+      fb.mesh.rotation.x += fb.rot.x * dt;
+      fb.mesh.rotation.y += fb.rot.y * dt;
+      const progress = 1 - fb.life / fb.maxLife;
+      const curScale = 0.4 + progress * 3.4; // mengembang membesar saat melesat
+      fb.mesh.scale.setScalar(curScale);
+    }
+  }
+}
+
 // --- Siklus Waktu Hari (Pagi, Siang, Sore, Malam) ---
 const tod = {
   mode: 'auto',        // 'auto' | 'dawn' | 'day' | 'dusk' | 'night'
@@ -3075,6 +3939,12 @@ document.querySelectorAll('.tod-btn').forEach(b => addModalTap(b, () => {
   refreshWxUI(); toast(`Waktu: ${b.textContent.trim()}`);
 }));
 addModalTap($('btnSound'), () => { sfx.on = !sfx.on; refreshWxUI(); });
+if ($('btnSummonDragon')) {
+  addModalTap($('btnSummonDragon'), () => {
+    $('settingsPopup').classList.add('hidden');
+    if (typeof summonDragonTest === 'function') summonDragonTest();
+  });
+}
 
 /* ---------- Game loop ---------- */
 let last = performance.now(), fAcc = 0, fN = 0;
@@ -3103,6 +3973,7 @@ function update(dt) {
     markTrees();
   }
   fireFX.update(dt); dustFX.update(dt);
+  if (typeof updateDragon === 'function') updateDragon(dt);
 
   // Animasi roket tercecer di map: rotasi & melayang (bobbing)
   if (rocketPickups.length > 0) {
