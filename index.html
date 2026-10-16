@@ -215,7 +215,12 @@
         <span class="text-white/30 text-[10px]">•</span>
         <div class="flex items-center gap-1" title="Senjata Tembak">
           <svg class="w-3.5 h-3.5 text-red-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13h4l2-4h8l2 4h4v3H2z"/><path d="M12 5v4M9 9h6"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>
-          <span id="gunCount" class="text-red-300 font-bold">2</span>
+          <span id="gunCount" class="text-red-300 font-bold">0</span>
+        </div>
+        <span class="text-white/30 text-[10px]">•</span>
+        <div class="flex items-center gap-1" title="Peluncur Rudal">
+          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l-3 4.5v10l-2 1.5v2l5-2 5 2v-2l-2-1.5V7l-3-4.5z"/></svg>
+          <span id="missileCount" class="text-amber-300 font-bold">0</span>
         </div>
       </div>
 
@@ -236,8 +241,8 @@
 
   <div id="toast" class="absolute top-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-black/65 text-white text-sm opacity-0 transition-opacity duration-300 whitespace-nowrap"></div>
 
-  <!-- Virtual joystick (kiri: ukuran lebih ringkas dan digeser ke kanan agar nyaman di jempol) -->
-  <div id="joyBase" class="nobuild play-only absolute pointer-events-auto rounded-full"
+  <!-- Virtual joystick (aktif di play, build untuk pan kamera vertikal, dan drive) -->
+  <div id="joyBase" class="absolute pointer-events-auto rounded-full"
        style="left:48px;bottom:26px;width:110px;height:110px;background:rgba(255,255,255,.18);border:3px solid rgba(255,255,255,.55);touch-action:none">
     <div id="joyKnob" class="absolute rounded-full" style="left:50%;top:50%;width:48px;height:48px;transform:translate(-50%,-50%);background:rgba(255,255,255,.5);border:2px solid rgba(255,255,255,.8)"></div>
   </div>
@@ -255,6 +260,15 @@
         <svg class="w-7 h-7 text-emerald-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
       </span>
       <span class="lbl">Lompat</span>
+    </button>
+    <button id="btnMissile" class="rbtn play-only" style="right:180px;bottom:172px;width:72px;height:72px;display:none;background:linear-gradient(135deg,rgba(217,119,6,0.85),rgba(180,83,9,0.95));border-color:rgba(251,191,36,0.85);box-shadow:0 0 18px rgba(245,158,11,0.5)">
+      <span class="ico">
+        <svg class="w-7 h-7 text-amber-200" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2.5l-3 4.5v10l-2 1.5v2l5-2 5 2v-2l-2-1.5V7l-3-4.5z"/>
+        </svg>
+      </span>
+      <span class="lbl font-bold tracking-wider text-[9px]">RUDAL</span>
+      <div id="missileCdOverlay" class="absolute inset-0 rounded-full bg-black/65 flex items-center justify-center font-bold text-sm text-amber-300 hidden">5.0s</div>
     </button>
     <button id="btnShoot" class="rbtn play-only" style="right:180px;bottom:94px;width:72px;height:72px;display:none;background:linear-gradient(135deg,rgba(225,29,72,0.85),rgba(159,18,57,0.95));border-color:rgba(251,113,133,0.85);box-shadow:0 0 18px rgba(225,29,72,0.5)">
       <span class="ico">
@@ -320,7 +334,15 @@
       <span class="ico">
         <svg class="w-6 h-6 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13h4l2-4h8l2 4h4v3H2z"/><path d="M12 5v4M9 9h6"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>
       </span>
-      <span>Senjata<br><b id="slotGun">2</b> tembak</span>
+      <span>Senjata<br><b id="slotGun">0</b> tembak</span>
+    </button>
+    <button class="slot" data-tool="missile">
+      <span class="ico">
+        <svg class="w-6 h-6 text-amber-400" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M13.5 2.5a2 2 0 0 0-3 0L7 8l2 2 3-3v11l-2 1v2l4-1.5 4 1.5v-2l-2-1V7l3 3 2-2-4.5-5.5z"/>
+        </svg>
+      </span>
+      <span>Rudal<br><b id="slotMissile">0</b> rudal</span>
     </button>
     <button class="slot" data-tool="del">
       <span class="ico">
@@ -1028,6 +1050,134 @@ function createRocketPickupMesh() {
   }
 })();
 
+/* --- GUN PICKUP SYSTEM (Senjata tercecer di map untuk di-pickup) --- */
+const gunPickups = [];
+const gunGroup = new THREE.Group();
+scene.add(gunGroup);
+
+function createGunPickupMesh() {
+  const g = new THREE.Group();
+  // Badan dudukan senjata
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.32, 0.6), lam(0x334155));
+  base.position.y = 0.38;
+  g.add(base);
+  // Laras ganda
+  [-0.14, 0.14].forEach(ox => {
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.85, 8).rotateX(Math.PI / 2), lam(0x1e293b));
+    barrel.position.set(ox, 0.38, -0.35);
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.16, 8).rotateX(Math.PI / 2), lam(0xe11d48));
+    tip.position.set(ox, 0.38, -0.80);
+    g.add(barrel, tip);
+  });
+  // Inti kristal cyan bercahaya
+  const core = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.3), new THREE.MeshBasicMaterial({ color: 0x06b6d4 }));
+  core.position.set(0, 0.45, 0);
+  g.add(core);
+  // Halo cincin pendar merah-magenta di dasar
+  const haloGeo = new THREE.RingGeometry(0.35, 0.55, 16).rotateX(-Math.PI / 2);
+  const halo = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ color: 0xf43f5e, side: THREE.DoubleSide, transparent: true, opacity: 0.75 }));
+  halo.position.y = -0.05;
+  g.add(halo);
+  return g;
+}
+
+(function placeGuns() {
+  const NUM_GUNS = 24;
+  const addGun = (x, z) => {
+    const y = terrainY(x, z);
+    const mesh = createGunPickupMesh();
+    mesh.position.set(x, y + 0.55, z);
+    gunGroup.add(mesh);
+    gunPickups.push({
+      x, y, z,
+      baseY: y + 0.55,
+      rotSpeed: 2.0 + rand() * 1.0,
+      phase: rand() * TAU,
+      mesh,
+      collected: false
+    });
+  };
+
+  // 2 starter guns dekat pad (28m - 50m)
+  addGun(SITE.x + 28, SITE.z - 20);
+  addGun(SITE.x - 32, SITE.z + 24);
+
+  let tries = 0;
+  while (gunPickups.length < NUM_GUNS && tries++ < 3000) {
+    const r = 50 + rand() * 700;
+    const a = rand() * TAU;
+    const x = clamp(SITE.x + Math.cos(a) * r, -T_HALF + 30, T_HALF - 30);
+    const z = clamp(SITE.z + Math.sin(a) * r, -T_HALF + 30, T_HALF - 30);
+    if (Math.hypot(x - SITE.x, z - SITE.z) < 25) continue;
+    const y = terrainY(x, z);
+    if (y > 70) continue;
+    addGun(x, z);
+  }
+})();
+
+/* --- MISSILE PICKUP SYSTEM (Rudal tercecer di map untuk di-pickup) --- */
+const missilePickups = [];
+const missileGroup = new THREE.Group();
+scene.add(missileGroup);
+
+function createMissilePickupMesh() {
+  const g = new THREE.Group();
+  // Tabung peluncur rudal vertikal
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.1, 8), lam(0xe2e8f0));
+  body.position.y = 0.58;
+  g.add(body);
+  // Kepala hulu ledak kerucut merah
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.32, 8), lam(0xe11d48));
+  tip.position.y = 1.25;
+  g.add(tip);
+  // Sirip ekor kuning-oranye
+  const fin1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.04), lam(0xd97706));
+  fin1.position.y = 0.22;
+  const fin2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.5), lam(0xd97706));
+  fin2.position.y = 0.22;
+  g.add(fin1, fin2);
+  // Halo cincin pendar emas-kuning di dasar
+  const haloGeo = new THREE.RingGeometry(0.35, 0.55, 16).rotateX(-Math.PI / 2);
+  const halo = new THREE.Mesh(haloGeo, new THREE.MeshBasicMaterial({ color: 0xfbbf24, side: THREE.DoubleSide, transparent: true, opacity: 0.8 }));
+  halo.position.y = -0.05;
+  g.add(halo);
+  return g;
+}
+
+(function placeMissiles() {
+  const NUM_MISSILES = 22;
+  const addMissile = (x, z) => {
+    const y = terrainY(x, z);
+    const mesh = createMissilePickupMesh();
+    mesh.position.set(x, y + 0.55, z);
+    missileGroup.add(mesh);
+    missilePickups.push({
+      x, y, z,
+      baseY: y + 0.55,
+      rotSpeed: 1.6 + rand() * 1.2,
+      phase: rand() * TAU,
+      mesh,
+      collected: false
+    });
+  };
+
+  // 2 starter missiles dekat pad (35m - 60m)
+  addMissile(SITE.x - 22, SITE.z - 35);
+  addMissile(SITE.x + 36, SITE.z + 32);
+
+  let tries = 0;
+  while (missilePickups.length < NUM_MISSILES && tries++ < 3000) {
+    const r = 55 + rand() * 700;
+    const a = rand() * TAU;
+    const x = clamp(SITE.x + Math.cos(a) * r, -T_HALF + 30, T_HALF - 30);
+    const z = clamp(SITE.z + Math.sin(a) * r, -T_HALF + 30, T_HALF - 30);
+    if (Math.hypot(x - SITE.x, z - SITE.z) < 28) continue;
+    const y = terrainY(x, z);
+    if (y > 70) continue;
+    addMissile(x, z);
+  }
+})();
+
 /* ------------------------------------------------------------------ *
  * 4. KARAKTER BLOCKY + animasi
  * ------------------------------------------------------------------ */
@@ -1254,6 +1404,12 @@ const G = {
   gunBarrel: flat(new THREE.CylinderGeometry(0.08, 0.08, 0.95, 8).rotateX(Math.PI / 2)),
   gunTip: flat(new THREE.CylinderGeometry(0.12, 0.09, 0.18, 8).rotateX(Math.PI / 2)),
   gunCore: new THREE.BoxGeometry(0.24, 0.24, 0.35),
+  missilePylon: flat(new THREE.BoxGeometry(0.32, 0.22, 0.55)),
+  missileBody: flat(new THREE.CylinderGeometry(0.12, 0.12, 1.25, 8).rotateX(Math.PI / 2)),
+  missileTip: flat(new THREE.ConeGeometry(0.14, 0.35, 8).rotateX(-Math.PI / 2)),
+  missileFin1: flat(new THREE.BoxGeometry(0.52, 0.04, 0.26)),
+  missileFin2: flat(new THREE.BoxGeometry(0.04, 0.52, 0.26)),
+  missileBand: flat(new THREE.CylinderGeometry(0.13, 0.13, 0.15, 8).rotateX(Math.PI / 2)),
   proxy: new THREE.BoxGeometry(1, 1, 1),
   plumeOuter: flat(new THREE.CylinderGeometry(0.04, 0.28, 2.4, 8, 1, true).rotateX(Math.PI / 2).translate(0, 0, 1.2)),
   plumeCore: flat(new THREE.CylinderGeometry(0.012, 0.14, 1.3, 8, 1, true).rotateX(Math.PI / 2).translate(0, 0, 0.65)),
@@ -1293,16 +1449,40 @@ function makePartMesh(type) {
     const core = new THREE.Mesh(G.gunCore, new THREE.MeshBasicMaterial({ color: 0x06b6d4 }));
     core.position.set(0, 0.08, 0.02);
     g.add(core);
+  } else if (type === 'missile') {
+    // Pylon dudukan pilar baja ke rangka
+    const pylon = new THREE.Mesh(G.missilePylon, lam(0x334155));
+    pylon.position.set(0, 0.18, 0);
+    g.add(pylon);
+    // Tabung badan rudal aerodinamis
+    const body = new THREE.Mesh(G.missileBody, lam(0xe2e8f0));
+    body.position.set(0, -0.02, 0);
+    g.add(body);
+    // Kepala hulu ledak (arah depan -Z)
+    const tip = new THREE.Mesh(G.missileTip, lam(0xe11d48));
+    tip.position.set(0, -0.02, -0.78);
+    g.add(tip);
+    // Sirip silang penyeimbang (belakang +Z)
+    const fin1 = new THREE.Mesh(G.missileFin1, lam(0xd97706));
+    fin1.position.set(0, -0.02, 0.46);
+    const fin2 = new THREE.Mesh(G.missileFin2, lam(0xd97706));
+    fin2.position.set(0, -0.02, 0.46);
+    g.add(fin1); g.add(fin2);
+    // Ring status bercahaya emas
+    const band = new THREE.Mesh(G.missileBand, new THREE.MeshBasicMaterial({ color: 0xfbbf24 }));
+    band.position.set(0, -0.02, -0.22);
+    g.add(band);
   }
   return g;
 }
-const inv = { wood: 0, thruster: 0, wing: 0, gun: 2 };
+const inv = { wood: 0, thruster: 0, wing: 0, gun: 0, missile: 0 };
 const state = { tool: 'block' };
 function setWood(n) { inv.wood = Math.max(0, n); $('woodCount').textContent = inv.wood; $('slotWood').textContent = inv.wood; }
 function setWing(n) { inv.wing = Math.max(0, n); $('wingCount').textContent = inv.wing; $('slotWing').textContent = inv.wing; }
 function setThruster(n) { inv.thruster = Math.max(0, n); $('thrCount').textContent = inv.thruster; $('slotThr').textContent = inv.thruster; }
 function setGun(n) { inv.gun = Math.max(0, n); if ($('gunCount')) $('gunCount').textContent = inv.gun; if ($('slotGun')) $('slotGun').textContent = inv.gun; }
-setWood(0); setWing(0); setThruster(0); setGun(2);
+function setMissile(n) { inv.missile = Math.max(0, n); if ($('missileCount')) $('missileCount').textContent = inv.missile; if ($('slotMissile')) $('slotMissile').textContent = inv.missile; }
+setWood(0); setWing(0); setThruster(0); setGun(0); setMissile(0);
 
 function addPart(type, i, j, k, silent, isPreset = false) {
   const key = i + ',' + j + ',' + k; if (parts.has(key)) return false;
@@ -1316,11 +1496,11 @@ function addPart(type, i, j, k, silent, isPreset = false) {
     if (inv.thruster < 1 && !silent) { toast('Roket tidak cukup! Cari roket tercecer di map 🚀'); return false; }
     if (!silent) setThruster(inv.thruster - 1);
   } else if (type === 'gun') {
-    if (inv.gun < 1 && inv.wood < 2 && !silent) { toast('Senjata habis! Butuh 2 Kayu 🪵 untuk merakit'); return false; }
-    if (!silent) {
-      if (inv.gun >= 1) setGun(inv.gun - 1);
-      else setWood(inv.wood - 2);
-    }
+    if (inv.gun < 1 && !silent) { toast('Senjata tembak habis! Cari senjata tercecer di map 🔫'); return false; }
+    if (!silent) setGun(inv.gun - 1);
+  } else if (type === 'missile') {
+    if (inv.missile < 1 && !silent) { toast('Rudal habis! Cari peluncur rudal tercecer di map 🚀'); return false; }
+    if (!silent) setMissile(inv.missile - 1);
   }
   const mesh = makePartMesh(type); mesh.position.set(i, j + .5, k); partRoot.add(mesh);
   mesh.traverse(o => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });   // aktif hanya jika shadow map ON
@@ -1336,6 +1516,7 @@ function removePart(key, refund) {
     else if (p.type === 'wing') setWing(inv.wing + 1);
     else if (p.type === 'thruster') setThruster(inv.thruster + 1);
     else if (p.type === 'gun') setGun(inv.gun + 1);
+    else if (p.type === 'missile') setMissile(inv.missile + 1);
   }
   updateStats();
 }
@@ -1343,7 +1524,7 @@ function clearParts(refund) { for (const k of [...parts.keys()]) removePart(k, r
 
 // Statistik kendaraan dengan Center of Mass & Momen Aerodinamis Sayap Sejati (Relatif terhadap CoM)
 function computeStats() {
-  let blocks = 0, wings = 0, thr = 0, guns = 0;
+  let blocks = 0, wings = 0, thr = 0, guns = 0, missiles = 0;
   let sumMass = 0;
   let sumMx = 0, sumMy = 0, sumMz = 0;
 
@@ -1351,7 +1532,8 @@ function computeStats() {
     let m = 0.80;
     if (p.type === 'wing') { wings++; m = 0.22; }        // Sayap aerodinamis ringan & stabil
     else if (p.type === 'thruster') { thr++; m = 0.38; }  // Roket pendorong ringan
-    else if (p.type === 'gun') { guns++; m = 0.45; }      // Senjata tembak seimbang
+    else if (p.type === 'gun') { guns++; m = 0.55; }      // Senjata tembak seimbang
+    else if (p.type === 'missile') { missiles++; m = 1.15; } // Rudal memiliki massa 1.15 kg, mempengaruhi keseimbangan secara fisik!
     else { blocks++; m = 0.80; }
 
     sumMass += m;
@@ -1373,6 +1555,7 @@ function computeStats() {
   let wingsL = 0, wingsR = 0;
   let wingLiftX = 0, wingLiftZ = 0;
   let thrX = 0, thrY = 0;
+  let missileImbalanceX = 0, missileImbalanceZ = 0;
 
   parts.forEach(p => {
     const relX = p.i - comX;
@@ -1391,17 +1574,23 @@ function computeStats() {
       thrX += relX;
       thrY += relY;
     }
+    if (p.type === 'missile') {
+      // Lengan beban massa rudal (1.15kg) jika diletakkan asimetris
+      missileImbalanceX += relX;
+      missileImbalanceZ += relZ;
+    }
   });
 
   return {
-    blocks, wings, thr, guns, mass, count: parts.size,
+    blocks, wings, thr, guns, missiles, mass, count: parts.size,
     comX, comY, comZ,
     wingsL, wingsR,
     wingImbalanceX: wingLiftX,
     massImbalanceX: 0, // Pivot pesawat sudah berada tepat di CoM, sehingga torsi gravitasi = 0
     wingImbalanceZ: wingLiftZ,
     massImbalanceZ: 0,
-    thrX, thrY
+    thrX, thrY,
+    missileImbalanceX, missileImbalanceZ
   };
 }
 function updateStats() {
@@ -1491,30 +1680,47 @@ const AIRCRAFT_PRESETS = [
     badgeCol: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
     desc: '4 roket pendorong masif dirancang untuk melesat dengan akselerasi maksimal di angkasa.',
     stats: '🚀 4 Roket • ⚡ Sangat Cepat',
-    cost: { wood: 3, wing: 4, thruster: 4, gun: 0 },
+    cost: { wood: 3, wing: 4, thruster: 4, gun: 0, missile: 0 },
     parts: [
       { type: 'block', coords: [[0, 0, -1], [0, 0, 0], [0, 0, 1]] },
       { type: 'wing', coords: [[-1, 0, 0], [1, 0, 0], [-1, 0, 1], [1, 0, 1]] },
       { type: 'thruster', coords: [[0, 0, 2], [-1, 0, 2], [1, 0, 2], [0, 1, 1]] }
     ]
+  },
+  {
+    id: 'missile_cruiser',
+    name: 'Heavy Gunship (Peluncur Rudal)',
+    badge: 'Rudal Kendali',
+    badgeCol: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    desc: 'Pesawat tempur kelas berat dilengkapi 2 Peluncur Rudal kendali & 3 Roket pendorong.',
+    stats: '🚀 2 Rudal • ⚖️ Bobot Mantap',
+    cost: { wood: 4, wing: 6, thruster: 3, gun: 0, missile: 2 },
+    parts: [
+      { type: 'block', coords: [[0, 0, -2], [0, 0, -1], [0, 0, 0], [0, 0, 1]] },
+      { type: 'wing', coords: [[-1, 0, 0], [-2, 0, 0], [1, 0, 0], [2, 0, 0], [-1, 0, -1], [1, 0, -1]] },
+      { type: 'thruster', coords: [[-1, 0, 1], [1, 0, 1], [0, 0, 2]] },
+      { type: 'missile', coords: [[-2, 0, -1], [2, 0, -1]] }
+    ]
   }
 ];
 
 function getAvailMaterials() {
-  let onPadWood = 0, onPadWing = 0, onPadThruster = 0, onPadGun = 0;
+  let onPadWood = 0, onPadWing = 0, onPadThruster = 0, onPadGun = 0, onPadMissile = 0;
   parts.forEach(p => {
     if (!p.isPreset) {
       if (p.type === 'block') onPadWood++;
       else if (p.type === 'wing') onPadWing++;
       else if (p.type === 'thruster') onPadThruster++;
       else if (p.type === 'gun') onPadGun++;
+      else if (p.type === 'missile') onPadMissile++;
     }
   });
   return {
     wood: inv.wood + onPadWood,
     wing: inv.wing + onPadWing,
     thruster: inv.thruster + onPadThruster,
-    gun: inv.gun + onPadGun
+    gun: inv.gun + onPadGun,
+    missile: inv.missile + onPadMissile
   };
 }
 
@@ -1528,13 +1734,15 @@ function renderPresetModal() {
     const hasWing = avail.wing >= p.cost.wing;
     const hasThr = avail.thruster >= p.cost.thruster;
     const hasGun = (p.cost.gun || 0) === 0 || (avail.gun >= (p.cost.gun || 0));
-    const canCraft = hasWood && hasWing && hasThr && hasGun;
+    const hasMissile = (p.cost.missile || 0) === 0 || (avail.missile >= (p.cost.missile || 0));
+    const canCraft = hasWood && hasWing && hasThr && hasGun && hasMissile;
 
     const missing = [];
     if (!hasWood) missing.push(`${p.cost.wood - avail.wood} Kayu`);
     if (!hasWing) missing.push(`${p.cost.wing - avail.wing} Sayap`);
     if (!hasThr) missing.push(`${p.cost.thruster - avail.thruster} Roket`);
     if (!hasGun) missing.push(`${(p.cost.gun || 0) - avail.gun} Senjata`);
+    if (!hasMissile) missing.push(`${(p.cost.missile || 0) - avail.missile} Rudal`);
 
     return `
       <div class="p-3.5 rounded-xl border border-white/10 bg-white/5 hover:border-white/20 transition-all flex flex-col gap-2.5">
@@ -1553,6 +1761,7 @@ function renderPresetModal() {
             <span class="${hasWing ? 'text-cyan-300' : 'text-rose-400 font-bold'}">🪽 ${p.cost.wing} (${avail.wing})</span>
             <span class="${hasThr ? 'text-rose-300' : 'text-rose-400 font-bold'}">🚀 ${p.cost.thruster} (${avail.thruster})</span>
             ${p.cost.gun ? `<span class="${hasGun ? 'text-red-300' : 'text-rose-400 font-bold'}">🔫 ${p.cost.gun} (${avail.gun})</span>` : ''}
+            ${p.cost.missile ? `<span class="${hasMissile ? 'text-amber-300' : 'text-rose-400 font-bold'}">🚀 ${p.cost.missile} (${avail.missile})</span>` : ''}
           </div>
 
           <button onclick="applyPresetPlan('${p.id}')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 shadow ${canCraft ? 'bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white cursor-pointer' : 'bg-white/10 text-white/40 cursor-not-allowed opacity-60'}">
@@ -1577,7 +1786,7 @@ window.applyPresetPlan = function(presetId) {
   const p = AIRCRAFT_PRESETS.find(x => x.id === presetId);
   if (!p) return;
   const avail = getAvailMaterials();
-  const canCraft = (avail.wood >= p.cost.wood) && (avail.wing >= p.cost.wing) && (avail.thruster >= p.cost.thruster) && (!p.cost.gun || avail.gun >= p.cost.gun);
+  const canCraft = (avail.wood >= p.cost.wood) && (avail.wing >= p.cost.wing) && (avail.thruster >= p.cost.thruster) && (!p.cost.gun || avail.gun >= p.cost.gun) && (!p.cost.missile || avail.missile >= p.cost.missile);
   if (!canCraft) {
     toast('Bahan tidak cukup untuk merakit ' + p.name);
     return;
@@ -1603,7 +1812,8 @@ $('presetPopup').addEventListener('pointerdown', e => { if (e.target === $('pres
 const PHYS = { GRAV: 9.0, THRUST: 24, CL: .085, MAXLIFT_G: 3.0 };
 const veh = {
   pos: new THREE.Vector3(), quat: new THREE.Quaternion(), vel: new THREE.Vector3(), c: new THREE.Vector3(),
-  stats: computeStats(), corners: [], thrusters: [], guns: [], shootCd: 0, rad: 1.6,
+  stats: computeStats(), corners: [], thrusters: [], guns: [], shootCd: 0,
+  missiles: [], missileCd: 0, rad: 1.6,
   camF: new THREE.Vector3(0, 0, -1), camU: new THREE.Vector3(0, 1, 0), impactCd: 0, sim: false
 };
 const _f = new THREE.Vector3(), _u = new THREE.Vector3(), _r = new THREE.Vector3(), _a = new THREE.Vector3(), _t1 = new THREE.Vector3(), _n = new THREE.Vector3(), _t2 = new THREE.Vector3();
@@ -1656,6 +1866,18 @@ function updateProjectiles(dt) {
     }
 
     p.pos.addScaledVector(p.vel, dt);
+
+    // Tabrakan peluru dengan Naga Penjaga Arena
+    if (typeof dragonState !== 'undefined' && dragonState.active && dragon.root && dragon.root.visible) {
+      if (p.pos.distanceTo(dragonState.pos) < 14) {
+        if (dragonState.hp === undefined) dragonState.hp = 140;
+        dragonState.hp -= 4;
+        burst(p.pos.x, p.pos.y, p.pos.z, 10, [1, 0.2, 0.1], [1, 0.8, 0.2], 5, 2.0, 0.3);
+        projGroup.remove(p.mesh);
+        projectiles.splice(i, 1);
+        continue;
+      }
+    }
 
     // Tabrakan peluru dengan tanah/bukit
     const gy = surfaceY(p.pos.x, p.pos.z);
@@ -1718,6 +1940,283 @@ function updateProjectiles(dt) {
   }
 }
 
+// --- SISTEM PELUNCUR RUDAL (GUIDED MISSILE / HOMING & STRAIGHT) ---
+const missileFlyGroup = new THREE.Group();
+scene.add(missileFlyGroup);
+const activeMissiles = [];
+
+function createFlyingMissileMesh() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(G.missileBody, lam(0xe2e8f0));
+  const tip = new THREE.Mesh(G.missileTip, lam(0xe11d48));
+  tip.position.z = -0.78;
+  const fin1 = new THREE.Mesh(G.missileFin1, lam(0xd97706));
+  fin1.position.z = 0.46;
+  const fin2 = new THREE.Mesh(G.missileFin2, lam(0xd97706));
+  fin2.position.z = 0.46;
+  const band = new THREE.Mesh(G.missileBand, new THREE.MeshBasicMaterial({ color: 0xfbbf24 }));
+  band.position.z = -0.22;
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff8811 }));
+  glow.position.z = 0.65;
+  g.add(body, tip, fin1, fin2, band, glow);
+  return g;
+}
+
+function getHomingTarget(originPos, forwardDir) {
+  let bestTarget = null;
+  let bestScore = -1e9;
+
+  // 1. Naga Penjaga Arena (Dragon)
+  if (typeof dragonState !== 'undefined' && dragonState.active && dragon.root && dragon.root.visible) {
+    const toD = new THREE.Vector3().subVectors(dragonState.pos, originPos);
+    const dist = toD.length();
+    if (dist < 800) {
+      toD.normalize();
+      const dot = forwardDir.dot(toD);
+      if (dot > 0.12) {
+        const score = dot * 200 - dist * 0.15;
+        if (score > bestScore) {
+          bestScore = score;
+          bestTarget = { type: 'dragon', getPos: () => dragonState.pos, obj: dragonState };
+        }
+      }
+    }
+  }
+
+  // 2. Monster raksasa masa depan (window.activeMonsters / window.monsters)
+  const monsterList = window.activeMonsters || window.monsters;
+  if (monsterList && Array.isArray(monsterList)) {
+    for (const m of monsterList) {
+      if (!m || m.dead) continue;
+      const mpos = m.pos || (m.mesh && m.mesh.position);
+      if (!mpos) continue;
+      const toM = new THREE.Vector3().subVectors(mpos, originPos);
+      const dist = toM.length();
+      if (dist < 600) {
+        toM.normalize();
+        const dot = forwardDir.dot(toM);
+        if (dot > 0.15) {
+          const score = dot * 180 - dist * 0.2;
+          if (score > bestScore) {
+            bestScore = score;
+            bestTarget = { type: 'monster', getPos: () => mpos, obj: m };
+          }
+        }
+      }
+    }
+  }
+
+  return bestTarget;
+}
+
+function launchMissile() {
+  if (mode !== 'drive' || !veh.missiles || veh.missiles.length === 0) return;
+  if (veh.missileCd > 0) {
+    toast(`⏳ Rudal masih Cooldown (${veh.missileCd.toFixed(1)}s)`);
+    return;
+  }
+  veh.missileCd = 5.0; // Cooldown tepat 5 detik!
+  playMissileLaunchSound();
+
+  _f.set(0, 0, -1).applyQuaternion(veh.quat);
+  let lockedCount = 0;
+
+  for (const mp of veh.missiles) {
+    const worldMount = mp.clone().applyQuaternion(veh.quat).add(veh.pos);
+    const target = getHomingTarget(worldMount, _f);
+    if (target) lockedCount++;
+
+    const mesh = createFlyingMissileMesh();
+    mesh.position.copy(worldMount);
+    mesh.quaternion.copy(veh.quat);
+    missileFlyGroup.add(mesh);
+
+    const initialSpeed = 38;
+    const vel = _f.clone().multiplyScalar(initialSpeed).addScaledVector(veh.vel, 0.45);
+
+    activeMissiles.push({
+      mesh,
+      pos: mesh.position,
+      vel,
+      target,
+      life: 0,
+      maxLife: 7.5,
+      speed: initialSpeed,
+      maxSpeed: 145,
+      accel: 60,
+      turnRate: 5.2
+    });
+
+    burst(worldMount.x, worldMount.y, worldMount.z, 14, C_SPARK, C_YEL, 5, 2.0, 0.4);
+    burst(worldMount.x, worldMount.y, worldMount.z, 8, C_DUST, C_DUST, 3, 1.5, 0.6);
+  }
+
+  veh.vel.addScaledVector(_f, -0.65 * Math.min(veh.missiles.length, 4));
+  shake = Math.min(0.65, shake + 0.18);
+
+  if (lockedCount > 0) {
+    toast('🎯 RUDAL DILUNCURKAN: TARGET TERKUNCI! 🚀 (Cooldown 5.0s)');
+  } else {
+    toast('🚀 RUDAL DILUNCURKAN: JALUR LURUS (Cooldown 5.0s)');
+  }
+}
+
+function detonateMissile(pos, targetHit = null) {
+  playExplosionSound();
+  shake = Math.min(0.85, shake + 0.38);
+
+  // Ledakan partikel dahsyat
+  burst(pos.x, pos.y, pos.z, 36, [1, 0.2, 0.05], [1, 0.85, 0.15], 14, 5.0, 1.2);
+  burst(pos.x, pos.y, pos.z, 24, C_DUST, C_DUST, 10, 4.0, 1.4);
+  burst(pos.x, pos.y, pos.z, 18, C_SPARK, C_YEL, 16, 5.5, 0.8);
+
+  // Efek hantaman ke Naga
+  if (targetHit && targetHit.type === 'dragon') {
+    if (typeof dragonState !== 'undefined') {
+      if (dragonState.hp === undefined) dragonState.hp = 140;
+      dragonState.hp -= 40;
+      playDragonRoar(0.85);
+      if (dragonState.hp <= 0) {
+        dragonState.state = 'RETREAT';
+        dragonState.timer = 0;
+        toast('🏆 NAGA BERHASIL DIKALAHKAN DAN MUNDUR KELUAR ARENA!');
+      } else {
+        toast(`💥 RUDAL MELEDAK DI TUBUH NAGA! (HP: ${Math.max(0, Math.round(dragonState.hp))})`);
+      }
+    }
+  }
+
+  // Radius ledakan hantam pepohonan di sekitar (Blast Radius 14m)
+  const pcx = Math.floor(pos.x / OB_CELL), pcz = Math.floor(pos.z / OB_CELL);
+  let treesHit = 0;
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      const arr = obGrid.get(obKey(pcx + dx, pcz + dz));
+      if (!arr) continue;
+      for (const o of arr) {
+        if (o.alive === false) continue;
+        const ogy = o.y !== undefined ? o.y : surfaceY(o.x, o.z);
+        const dist = Math.hypot(pos.x - o.x, pos.z - o.z);
+        if (dist < 14.5 && Math.abs(pos.y - ogy) < 14) {
+          if (o.hp !== undefined) {
+            o.hp -= 20;
+            o.shake = 0.65;
+            const tidx = treeData.indexOf(o);
+            if (tidx >= 0) animTrees.add(tidx);
+            if (o.hp <= 0 && o.state === 0) {
+              o.state = 1; o.t = 0; o.alive = false;
+              o.dx = o.x - pos.x; o.dz = o.z - pos.z;
+              const ld = Math.hypot(o.dx, o.dz) || 1;
+              o.dx /= ld; o.dz /= ld;
+              treesHit++;
+            }
+          }
+        }
+      }
+    }
+  }
+  if (treesHit > 0) {
+    setWood(inv.wood + treesHit * 2);
+    toast(`💥 Ledakan rudal merobohkan ${treesHit} pohon! (+${treesHit * 2} Wood 🪵)`);
+  }
+}
+
+function updateMissiles(dt) {
+  if (!activeMissiles.length) return;
+  for (let i = activeMissiles.length - 1; i >= 0; i--) {
+    const m = activeMissiles[i];
+    m.life += dt;
+    if (m.life >= m.maxLife) {
+      detonateMissile(m.pos);
+      missileFlyGroup.remove(m.mesh);
+      activeMissiles.splice(i, 1);
+      continue;
+    }
+
+    // Jejak asap & api roket saat terbang
+    if (Math.random() < 0.85) {
+      burst(m.pos.x, m.pos.y, m.pos.z, 2, C_RED, C_YEL, 1.2, 0.5, 0.3);
+      burst(m.pos.x, m.pos.y, m.pos.z, 1, C_DUST, C_DUST, 1.5, 0.7, 0.45);
+    }
+
+    // Akselerasi roket pendorong
+    m.speed = Math.min(m.maxSpeed, m.speed + m.accel * dt);
+
+    // Bimbingan peluru kendali: Lock homing jika ada musuh, lurus jika tidak ada
+    if (m.target) {
+      const tpos = m.target.getPos ? m.target.getPos() : m.target.pos;
+      if (m.target.type === 'dragon' && (!dragonState.active || !dragon.root.visible)) {
+        m.target = null; // musuh kabur/mati -> terbang lurus
+      } else if (tpos) {
+        const desiredDir = new THREE.Vector3().subVectors(tpos, m.pos).normalize();
+        const curDir = m.vel.clone().normalize();
+        const newDir = curDir.lerp(desiredDir, Math.min(1, m.turnRate * dt)).normalize();
+        m.vel.copy(newDir).multiplyScalar(m.speed);
+      }
+    } else {
+      const dir = m.vel.clone().normalize();
+      m.vel.copy(dir).multiplyScalar(m.speed);
+    }
+
+    m.pos.addScaledVector(m.vel, dt);
+
+    const speedLen = m.vel.length();
+    if (speedLen > 0.1) {
+      _t1.copy(m.vel).normalize();
+      _q2.setFromUnitVectors(new THREE.Vector3(0, 0, -1), _t1);
+      m.mesh.quaternion.copy(_q2);
+    }
+
+    // Tabrakan dengan naga
+    if (typeof dragonState !== 'undefined' && dragonState.active && dragon.root && dragon.root.visible) {
+      const dDragon = m.pos.distanceTo(dragonState.pos);
+      if (dDragon < 14) {
+        detonateMissile(m.pos, { type: 'dragon' });
+        missileFlyGroup.remove(m.mesh);
+        activeMissiles.splice(i, 1);
+        continue;
+      }
+    }
+
+    // Tabrakan dengan permukaan tanah/bukit
+    const gy = surfaceY(m.pos.x, m.pos.z);
+    if (m.pos.y <= gy + 0.3) {
+      detonateMissile(new THREE.Vector3(m.pos.x, gy, m.pos.z));
+      missileFlyGroup.remove(m.mesh);
+      activeMissiles.splice(i, 1);
+      continue;
+    }
+
+    // Tabrakan dengan rintangan pohon di map
+    const pcx = Math.floor(m.pos.x / OB_CELL), pcz = Math.floor(m.pos.z / OB_CELL);
+    let hitObs = false;
+    for (let dx = -1; dx <= 1 && !hitObs; dx++) {
+      for (let dz = -1; dz <= 1 && !hitObs; dz++) {
+        const arr = obGrid.get(obKey(pcx + dx, pcz + dz));
+        if (!arr) continue;
+        for (const o of arr) {
+          if (o.alive === false) continue;
+          const ogy = o.y !== undefined ? o.y : surfaceY(o.x, o.z);
+          const otop = ogy + (o.h !== undefined ? o.h : 7);
+          if (m.pos.y >= ogy && m.pos.y <= otop + 1.5) {
+            const distXZ = Math.hypot(m.pos.x - o.x, m.pos.z - o.z);
+            if (distXZ < (o.r || 1.2) + 1.2) {
+              hitObs = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (hitObs) {
+      detonateMissile(m.pos);
+      missileFlyGroup.remove(m.mesh);
+      activeMissiles.splice(i, 1);
+      continue;
+    }
+  }
+}
+
 function prepareVehicle() {
   const st = veh.stats = computeStats();
   const mn = new THREE.Vector3(1e9, 1e9, 1e9), mxv = new THREE.Vector3(-1e9, -1e9, -1e9);
@@ -1774,6 +2273,15 @@ function prepareVehicle() {
   veh.shootCd = 0;
   if ($('btnShoot')) $('btnShoot').style.display = (mode === 'drive' && veh.guns.length > 0) ? 'flex' : 'none';
 
+  veh.missiles.length = 0;
+  parts.forEach(p => {
+    if (p.type === 'missile') {
+      veh.missiles.push(new THREE.Vector3(p.i - veh.c.x, (p.j + .5) - veh.c.y, p.k - veh.c.z - 0.8));
+    }
+  });
+  veh.missileCd = 0;
+  if ($('btnMissile')) $('btnMissile').style.display = (mode === 'drive' && veh.missiles.length > 0) ? 'flex' : 'none';
+
   const spawnGroundY = surfaceY(SITE.x + veh.c.x, SITE.z + veh.c.z);
   veh.pos.set(SITE.x + veh.c.x, spawnGroundY + veh.c.y, SITE.z + veh.c.z);
   veh.quat.identity(); veh.vel.set(0, 0, 0); veh.camF.set(0, 0, -1); veh.camU.set(0, 1, 0); veh.sim = true; applyVehicleTransform();
@@ -1783,6 +2291,23 @@ function stepVehicle(dt, driving) {
   if (veh.shootCd > 0) veh.shootCd -= dt;
   if (driving && (input.shoot || keys.KeyJ || (mode === 'drive' && keys.KeyF))) {
     shootGuns();
+  }
+
+  // Cooldown Rudal 5 detik dengan overlay hitung mundur
+  if (veh.missileCd > 0) {
+    veh.missileCd -= dt;
+    const cdEl = $('missileCdOverlay');
+    if (cdEl) {
+      if (veh.missileCd > 0) {
+        cdEl.classList.remove('hidden');
+        cdEl.textContent = veh.missileCd.toFixed(1) + 's';
+      } else {
+        cdEl.classList.add('hidden');
+      }
+    }
+  } else {
+    const cdEl = $('missileCdOverlay');
+    if (cdEl && !cdEl.classList.contains('hidden')) cdEl.classList.add('hidden');
   }
   _f.set(0, 0, -1).applyQuaternion(veh.quat); _u.set(0, 1, 0).applyQuaternion(veh.quat); _r.set(1, 0, 0).applyQuaternion(veh.quat);
 
@@ -1855,12 +2380,16 @@ function stepVehicle(dt, driving) {
     dPitch += (aeroPitch + thrPitch) * dt;
   }
 
-  // 4. Stabilitas Sayap & Auto-Level (Roll & Pitch):
-  const asymmetryFactor = clamp(Math.abs(st.wingImbalanceX) * 0.25 + Math.abs(st.thrX) * 0.35, 0, 0.90);
+  // 4. Stabilitas Sayap, Beban Rudal, & Auto-Level (Roll & Pitch):
+  const asymmetryFactor = clamp(Math.abs(st.wingImbalanceX) * 0.25 + Math.abs(st.thrX) * 0.35 + Math.abs(st.missileImbalanceX || 0) * 0.20, 0, 0.90);
   const autoLevelPower = Math.max(0.05, 1.0 - asymmetryFactor);
 
   if (Math.abs(ax.x) < .1) {
     dRoll += -_r.y * (.35 + wingsC * .15) * 2 * autoLevelPower * dt;
+    // Berat fisik rudal (1.15kg) secara realistis membebani sayap jika dipasang tidak simetris
+    if (st.missileImbalanceX) {
+      dRoll += -st.missileImbalanceX * 0.08 * clamp(speed / 10, 0.2, 1.2) * dt;
+    }
   }
 
   // AUTO-LEVEL PITCH: Mengembalikan hidung pesawat ke posisi terbang horizontal alami saat joystick dilepas
@@ -2092,7 +2621,7 @@ let mode = 'play', shake = 0, time = 0;
 const keys = {}, input = { act: false, jump: false, sprint: false, shoot: false, glideDown: false };
 let parachuteFast = false, glidePressTime = 0, glideWasFastOnDown = false;
 const joy = { x: 0, y: 0, id: null };
-const cam = { play: { yaw: 0, pitch: .38, dist: 7.5 }, build: { yaw: .7, pitch: .55, dist: 11 }, drive: { yaw: 0, pitch: 0, dist: 12 } };
+const cam = { play: { yaw: 0, pitch: .38, dist: 7.5 }, build: { yaw: 0, pitch: 1.48, dist: 14 }, drive: { yaw: 0, pitch: 0, dist: 12 } };
 const gasHeld = () => input.act || !!keys.Space;
 function getAxis() {
   let x = joy.x, y = joy.y;
@@ -2125,6 +2654,12 @@ function hold(el, key) {
 hold($('btnChop'), 'act'); hold($('btnJump'), 'jump');
 hold($('btnSprint'), 'sprint');
 if ($('btnShoot')) hold($('btnShoot'), 'shoot');
+if ($('btnMissile')) {
+  $('btnMissile').addEventListener('pointerdown', e => {
+    e.preventDefault();
+    launchMissile();
+  });
+}
 $('btnAct').addEventListener('pointerdown', e => { e.preventDefault(); interact(); });
 $('btnCraft').addEventListener('pointerdown', e => { e.preventDefault(); toggleCraft(); });
 
@@ -2232,6 +2767,9 @@ addEventListener('keydown', e => {
     if (mode === 'drive' && veh.guns && veh.guns.length > 0) input.shoot = true;
     else interact();
   }
+  if (e.code === 'KeyR' || e.code === 'KeyG') {
+    if (mode === 'drive') launchMissile();
+  }
   if (e.code === 'KeyJ') input.shoot = true;
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.sprint = true;
   if (e.code === 'Space') e.preventDefault();
@@ -2255,7 +2793,15 @@ canvas.addEventListener('pointermove', e => {
   if (!p) { if (mode === 'build' && e.pointerType === 'mouse') updateGhost(e.clientX, e.clientY); return; }
   const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; p.moved += Math.abs(dx) + Math.abs(dy);
   const c = cam[mode];
-  if (pointers.size === 1) { c.yaw -= dx * .006; c.pitch = clamp(c.pitch + dy * .005, -.5, 1.3); }
+  if (pointers.size === 1) {
+    if (mode === 'build') {
+      c.yaw -= dx * .006;
+      c.pitch = clamp(c.pitch + dy * .005, 0.35, 1.50);
+    } else {
+      c.yaw -= dx * .006;
+      c.pitch = clamp(c.pitch + dy * .005, -.5, 1.3);
+    }
+  }
   else if (pointers.size === 2) { const d = pinchDist(); if (pinch0 > 0) c.dist = clamp(c.dist * pinch0 / d, 4, mode === 'build' ? 48 : mode === 'drive' ? 30 : 22); pinch0 = d; }
 });
 function endPtr(e) {
@@ -2289,6 +2835,7 @@ function setMode(m) {
   $('actIco').innerHTML = m === 'drive' ? SVG_ICONS.down : SVG_ICONS.rocket;
   $('actLbl').textContent = m === 'drive' ? 'Turun' : 'Interaksi';
   if ($('btnShoot')) $('btnShoot').style.display = (m === 'drive' && veh.guns && veh.guns.length > 0) ? 'flex' : 'none';
+  if ($('btnMissile')) $('btnMissile').style.display = (m === 'drive' && veh.missiles && veh.missiles.length > 0) ? 'flex' : 'none';
   joy.x = joy.y = 0; joyKnob.style.transform = 'translate(-50%,-50%)';
 }
 function toggleCraft() {
@@ -2320,6 +2867,11 @@ function toggleCraft() {
     SITE.z = Math.round(player.z);
     SITE.y = terrainY(SITE.x, SITE.z);
 
+    camBuildTgt.set(SITE.x, SITE.y + 1.0, SITE.z);
+    cam.build.yaw = 0;
+    cam.build.pitch = 1.48; // Up-down vertikal top-down murni memudahkan pemain merakit!
+    cam.build.dist = 14;
+
     // Sinkronkan posisi proxy penempatan part bebas hambatan luas
     pad.position.set(SITE.x, SITE.y - 0.2, SITE.z);
     pad.visible = true;
@@ -2336,7 +2888,7 @@ function toggleCraft() {
     // Kendaraan dikembalikan ke posisi rakit baru untuk diedit
     veh.sim = false; partRoot.position.set(0, 0, 0); vehGroup.position.set(SITE.x, SITE.y, SITE.z); vehGroup.quaternion.identity();
     setMode('build'); updateStats();
-    toast('🔨 Mode Craft aktif! Bebas rakit tanpa batasan area');
+    toast('🔨 Mode Craft aktif! Kamera vertikal siap & gunakan analog untuk geser');
   }
 }
 function interact() {
@@ -2522,6 +3074,42 @@ function updatePlayer(dt) {
     }
   }
 
+  // Deteksi pickup senjata tembak tercecer di sekitar pemain
+  if (gunPickups.length > 0) {
+    for (let idx = gunPickups.length - 1; idx >= 0; idx--) {
+      const g = gunPickups[idx];
+      if (!g || g.collected) continue;
+      const gdx = player.x - g.x, gdz = player.z - g.z;
+      if (gdx * gdx + gdz * gdz < 6.5 && Math.abs(player.y - g.y) < 3.2) {
+        g.collected = true;
+        gunGroup.remove(g.mesh);
+        burst(g.x, g.baseY + 0.4, g.z, 14, [0.06, 0.75, 0.85], [0.95, 0.1, 0.28], 4, 1.8, 0.6);
+        burst(g.x, g.baseY + 0.4, g.z, 8, C_SPARK, [0.06, 0.75, 0.85], 3, 1.4, 0.5);
+        setGun(inv.gun + 1);
+        toast('🔫 Mendapatkan Senjata Tembak! (+1)');
+        gunPickups.splice(idx, 1);
+      }
+    }
+  }
+
+  // Deteksi pickup peluncur rudal tercecer di sekitar pemain
+  if (missilePickups.length > 0) {
+    for (let idx = missilePickups.length - 1; idx >= 0; idx--) {
+      const m = missilePickups[idx];
+      if (!m || m.collected) continue;
+      const mdx = player.x - m.x, mdz = player.z - m.z;
+      if (mdx * mdx + mdz * mdz < 6.5 && Math.abs(player.y - m.y) < 3.2) {
+        m.collected = true;
+        missileGroup.remove(m.mesh);
+        burst(m.x, m.baseY + 0.4, m.z, 14, [0.98, 0.75, 0.14], [0.88, 0.11, 0.28], 4, 1.8, 0.6);
+        burst(m.x, m.baseY + 0.4, m.z, 8, C_SPARK, [0.98, 0.75, 0.14], 3, 1.4, 0.5);
+        setMissile(inv.missile + 1);
+        toast('🚀 Mendapatkan Peluncur Rudal! (+1)');
+        missilePickups.splice(idx, 1);
+      }
+    }
+  }
+
   // animasi
   const moving = mag > 0 && !chop.active;
   const walkSpeedMult = sprinting ? 1.6 : 1.0;
@@ -2546,6 +3134,7 @@ function terrainOrPadY(x, z) { return surfaceY(x, z); }
 
 /* ---------- Kamera ---------- */
 const camTgt = new THREE.Vector3();
+const camBuildTgt = new THREE.Vector3(SITE.x, SITE.y + 1.0, SITE.z);
 function orbitCam(tgt, c) {
   camera.up.set(0, 1, 0); // Kembalikan up kamera tegak lurus dunia saat mode play & build
   const cp = Math.cos(c.pitch);
@@ -2555,7 +3144,7 @@ function orbitCam(tgt, c) {
 }
 function updateCamera(dt) {
   if (mode === 'play') orbitCam(camTgt.set(player.x, player.y + 1.7, player.z), cam.play);
-  else if (mode === 'build') orbitCam(camTgt.set(SITE.x, SITE.y + 1.5, SITE.z), cam.build);
+  else if (mode === 'build') orbitCam(camBuildTgt, cam.build);
   else {                                         // chase cam di belakang kendaraan (Gimbal-Lock-Free 6-DoF)
     _f.set(0, 0, -1).applyQuaternion(veh.quat);
     _u.set(0, 1, 0).applyQuaternion(veh.quat);
@@ -2712,6 +3301,36 @@ function drawMinimap() {
       ctx.beginPath(); ctx.arc(rx, ry, 3.2, 0, TAU); ctx.fill();
       ctx.fillStyle = '#00f0ff';
       ctx.beginPath(); ctx.arc(rx, ry, 1.8, 0, TAU); ctx.fill();
+    }
+  }
+
+  // Indikator Senjata Tembak Tercecer di Minimap (Titik Merah Crimson)
+  for (let i = 0; i < gunPickups.length; i++) {
+    const g = gunPickups[i];
+    if (!g || g.collected) continue;
+    const gdx = g.x - focus.x, gdz = g.z - focus.z;
+    const dist = Math.hypot(gdx, gdz);
+    if (dist * scale <= MM_RAD - 5) {
+      const gx = MM_CX + gdx * scale, gy = MM_CY + gdz * scale;
+      ctx.fillStyle = 'rgba(225, 29, 72, 0.65)';
+      ctx.beginPath(); ctx.arc(gx, gy, 3.2, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#f43f5e';
+      ctx.beginPath(); ctx.arc(gx, gy, 1.8, 0, TAU); ctx.fill();
+    }
+  }
+
+  // Indikator Peluncur Rudal Tercecer di Minimap (Titik Emas-Kuning Amber)
+  for (let i = 0; i < missilePickups.length; i++) {
+    const m = missilePickups[i];
+    if (!m || m.collected) continue;
+    const mdx = m.x - focus.x, mdz = m.z - focus.z;
+    const dist = Math.hypot(mdx, mdz);
+    if (dist * scale <= MM_RAD - 5) {
+      const mx = MM_CX + mdx * scale, my = MM_CY + mdz * scale;
+      ctx.fillStyle = 'rgba(217, 119, 6, 0.65)';
+      ctx.beginPath(); ctx.arc(mx, my, 3.4, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath(); ctx.arc(mx, my, 1.9, 0, TAU); ctx.fill();
     }
   }
 
@@ -2910,6 +3529,60 @@ function playWhooshSound() {
     const g = ctx.createGain(); g.gain.setValueAtTime(0.001, t0); g.gain.exponentialRampToValueAtTime(0.18, t0 + 0.05); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.35);
     src.connect(bp); bp.connect(g); g.connect(ctx.destination);
     src.start(t0); src.stop(t0 + 0.36);
+  } catch (e) {}
+}
+function playMissileLaunchSound() {
+  if (!sfx.on) return;
+  initAudio();
+  if (!sfx.ctx) return;
+  try {
+    const ctx = sfx.ctx, t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(240, t0);
+    osc.frequency.exponentialRampToValueAtTime(780, t0 + 0.35);
+    g.gain.setValueAtTime(0.3, t0);
+    g.gain.exponentialRampToValueAtTime(0.01, t0 + 0.45);
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.46);
+
+    if (sfx.noise) {
+      const src = ctx.createBufferSource(); src.buffer = sfx.noise;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.setValueAtTime(450, t0); bp.frequency.exponentialRampToValueAtTime(800, t0 + 0.4);
+      const ng = ctx.createGain(); ng.gain.setValueAtTime(0.28, t0); ng.gain.exponentialRampToValueAtTime(0.01, t0 + 0.45);
+      src.connect(bp); bp.connect(ng); ng.connect(ctx.destination);
+      src.start(t0); src.stop(t0 + 0.46);
+    }
+  } catch (e) {}
+}
+function playExplosionSound() {
+  if (!sfx.on) return;
+  initAudio();
+  if (!sfx.ctx) return;
+  try {
+    const ctx = sfx.ctx, t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const og = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, t0);
+    osc.frequency.exponentialRampToValueAtTime(28, t0 + 0.9);
+    og.gain.setValueAtTime(0.45, t0);
+    og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.9);
+    osc.connect(og);
+    og.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.92);
+
+    if (sfx.noise) {
+      const src = ctx.createBufferSource(); src.buffer = sfx.noise;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(750, t0); lp.frequency.exponentialRampToValueAtTime(90, t0 + 1.2);
+      const ng = ctx.createGain(); ng.gain.setValueAtTime(0.4, t0); ng.gain.exponentialRampToValueAtTime(0.001, t0 + 1.2);
+      src.connect(lp); lp.connect(ng); ng.connect(ctx.destination);
+      src.start(t0); src.stop(t0 + 1.22);
+    }
   } catch (e) {}
 }
 
@@ -3951,8 +4624,19 @@ let last = performance.now(), fAcc = 0, fN = 0;
 function update(dt) {
   time += dt;
   updateProjectiles(dt);
+  updateMissiles(dt);
   for (const c of clouds) { c.position.x += dt * 2.5; if (c.position.x > 900) c.position.x = -900; }
   if (mode === 'play') updatePlayer(dt);
+  if (mode === 'build') {
+    // Geser kamera rakit (pan) menggunakan analog joystick atau tombol panah / WASD
+    const a = getAxis();
+    if (a.x !== 0 || a.y !== 0) {
+      const panSpd = 14.0;
+      camBuildTgt.x = clamp(camBuildTgt.x + a.x * panSpd * dt, SITE.x - 40, SITE.x + 40);
+      camBuildTgt.z = clamp(camBuildTgt.z - a.y * panSpd * dt, SITE.z - 40, SITE.z + 40);
+      camBuildTgt.y = terrainY(camBuildTgt.x, camBuildTgt.z) + 1.0;
+    }
+  }
   if (veh.sim) {                                  // 2 sub-step agar tidak tembus tanah saat cepat
     const h = dt / 2; stepVehicle(h, mode === 'drive'); stepVehicle(h, mode === 'drive'); applyVehicleTransform();
     vehBlob.visible = true; const gy = surfaceY(veh.pos.x, veh.pos.z); vehBlob.position.set(veh.pos.x, gy + .06, veh.pos.z);
@@ -3984,6 +4668,24 @@ function update(dt) {
       r.mesh.position.y = r.baseY + Math.sin(time * 3.2 + r.phase) * 0.18;
     }
   }
+  // Animasi senjata tembak tercecer di map
+  if (gunPickups.length > 0) {
+    for (let idx = 0; idx < gunPickups.length; idx++) {
+      const g = gunPickups[idx];
+      if (!g || g.collected) continue;
+      g.mesh.rotation.y += dt * g.rotSpeed;
+      g.mesh.position.y = g.baseY + Math.sin(time * 3.4 + g.phase) * 0.16;
+    }
+  }
+  // Animasi peluncur rudal tercecer di map
+  if (missilePickups.length > 0) {
+    for (let idx = 0; idx < missilePickups.length; idx++) {
+      const m = missilePickups[idx];
+      if (!m || m.collected) continue;
+      m.mesh.rotation.y += dt * m.rotSpeed;
+      m.mesh.position.y = m.baseY + Math.sin(time * 3.0 + m.phase) * 0.18;
+    }
+  }
 
   updateCamera(dt);
   updateWeather(dt);                              // setelah kamera: sprite matahari, glare & hujan ikut posisi kamera
@@ -4006,10 +4708,13 @@ function update(dt) {
     $('btnChop').style.display = 'none';
     $('btnAct').style.display = 'none';
     if ($('btnShoot')) $('btnShoot').style.display = 'none';
+    if ($('btnMissile')) $('btnMissile').style.display = 'none';
   } else {
     if (btnGlideEl) btnGlideEl.style.display = 'none';
     $('btnSprint').style.display = (mode === 'play') ? 'flex' : 'none';
     $('btnJump').style.display = (mode === 'play') ? 'flex' : 'none';
+    if ($('btnShoot')) $('btnShoot').style.display = (mode === 'drive' && veh.guns && veh.guns.length > 0) ? 'flex' : 'none';
+    if ($('btnMissile')) $('btnMissile').style.display = (mode === 'drive' && veh.missiles && veh.missiles.length > 0) ? 'flex' : 'none';
 
     // Tombol Craft selalu siap digunakan kapan saja dan di mana saja!
     $('btnCraft').style.display = (mode === 'play' || mode === 'build') ? 'flex' : 'none';
