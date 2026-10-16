@@ -603,6 +603,7 @@ function genHeight(ix, iz) {
   const cm = sstep(.48, .72, fbm(x * .0045 - 5, z * .0045 + 7, 2)); // tebing bertingkat
   const s = h / 7, f = Math.floor(s), fr = s - f;
   h += (((f + sstep(.4, .6, fr)) * 7) - h) * cm * .85 * flatF;
+
   return h;
 }
 for (let iz = 0; iz < T_W; iz++) for (let ix = 0; ix < T_W; ix++) hGrid[iz * T_W + ix] = genHeight(ix, iz);
@@ -1770,23 +1771,230 @@ allTreeMeshes.forEach(m => { if (m.instanceColor) m.instanceColor.needsUpdate = 
 markTrees();
 const animTrees = new Set();
 
-// Batu
-(function placeRocks() {
-  const N = 380, geo = flat(new THREE.IcosahedronGeometry(1, 0));
-  const inst = new THREE.InstancedMesh(geo, treeMat, N); inst.frustumCulled = false;
-  const v = new THREE.Vector3(); let n = 0, tries = 0;
-  while (n < N && tries++ < 9000) {
-    const x = (rand() * 2 - 1) * (T_HALF - 15), z = (rand() * 2 - 1) * (T_HALF - 15);
-    if (Math.hypot(x - SITE.x, z - SITE.z) < 12 || (Math.abs(x - SITE.x) < 5 && z < SITE.z && z > -75)) continue;
-    const y = terrainY(x, z); if (y > 90) continue;
-    const s = .6 + rand() * 1.6;
-    _q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 6, rand() * 3));
-    _m.compose(_p.set(x, y - s * .25, z), _q, _sv.set(s * (.9 + rand() * .5), s * (.6 + rand() * .4), s * (.9 + rand() * .5)));
-    inst.setMatrixAt(n, _m); const g = .38 + rand() * .2; inst.setColorAt(n, _c.setRGB(g, g * .97, g * .93));
-    if (s > .9) obAdd({ x, z, r: s * .85 });
-    n++;
+// ===================================================================
+// SISTEM BEBATUAN STYLIZED LOW-POLY KHUSUS DAERAH TANDUS & LERENG GUNUNG
+// Terdiri dari 3 varian: Pilar Monolit Tinggi, Bongkahan Kubus Faset, dan Baji Miring
+// Mengelompok secara natural (gugus batu besar + pendamping) serta ukuran raksasa
+// ===================================================================
+function createStylizedMonolithGeo() {
+  const g = new THREE.CylinderGeometry(0.55, 0.95, 2.4, 6, 2);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    let px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i);
+    // Potongan miring diagonal pada puncak pilar monolit
+    if (py > 0.6) {
+      py -= (px * 0.42 + pz * 0.28);
+      px *= 0.86;
+      pz *= 0.86;
+    }
+    // Asimetri polygonal faset pahat alami
+    const ang = Math.atan2(pz, px);
+    const r = Math.hypot(px, pz) * (1.0 + Math.sin(ang * 3.0 + py * 1.4) * 0.14);
+    px = Math.cos(ang) * r;
+    pz = Math.sin(ang) * r;
+    pos.setXYZ(i, px, py + 1.15, pz);
   }
-  inst.count = n; inst.instanceColor.needsUpdate = true; scene.add(inst);
+  return flat(g);
+}
+
+function createStylizedBlockGeo() {
+  const g = new THREE.DodecahedronGeometry(1.0, 0);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    let px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i);
+    if (py < -0.3) py *= 0.60; // dasar datar menancap kokoh
+    if (py > 0.1) {
+      px += py * 0.22;
+      pz -= py * 0.18;
+      py *= 1.16;
+    }
+    pos.setXYZ(i, px * 1.15, py + 0.80, pz * 1.05);
+  }
+  return flat(g);
+}
+
+function createStylizedWedgeGeo() {
+  const g = new THREE.ConeGeometry(1.0, 1.5, 5, 1);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    let px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i);
+    px += (py + 0.75) * 0.36;
+    pz += Math.sin(px * 2.2) * 0.16;
+    pos.setXYZ(i, px * 0.95, py + 0.75, pz * 1.05);
+  }
+  return flat(g);
+}
+
+(function placeRocks() {
+  const geoTall = createStylizedMonolithGeo();
+  const geoBlock = createStylizedBlockGeo();
+  const geoWedge = createStylizedWedgeGeo();
+
+  const MAX_TALL = 500, MAX_BLOCK = 700, MAX_WEDGE = 550;
+  const instTall = new THREE.InstancedMesh(geoTall, treeMat, MAX_TALL);
+  const instBlock = new THREE.InstancedMesh(geoBlock, treeMat, MAX_BLOCK);
+  const instWedge = new THREE.InstancedMesh(geoWedge, treeMat, MAX_WEDGE);
+
+  instTall.frustumCulled = false;
+  instBlock.frustumCulled = false;
+  instWedge.frustumCulled = false;
+
+  let nTall = 0, nBlock = 0, nWedge = 0;
+
+  // Palet warna batu slate kelabu sejuk, arang basalt dan granit lapuk khas referensi
+  const ROCK_PALETTE = [
+    [0.34, 0.38, 0.45], // Slate blue-grey
+    [0.28, 0.32, 0.38], // Deep cool slate
+    [0.39, 0.44, 0.52], // Cool light slate
+    [0.32, 0.34, 0.37], // Neutral stone
+    [0.24, 0.27, 0.31], // Dark volcanic basalt
+    [0.42, 0.43, 0.46], // Sun-weathered granite
+    [0.30, 0.34, 0.40]  // Mountain slate
+  ];
+
+  function addRock(rx, rz, s, typeHint = -1, tiltX = 0, tiltZ = 0) {
+    if (rx < -T_HALF + 15 || rx > T_HALF - 15 || rz < -T_HALF + 15 || rz > T_HALF - 15) return;
+    // Hindari camp pemain, runway dan pad rakit
+    if (Math.hypot(rx - 11.4, rz - 11.7) < 14) return;
+    if (Math.hypot(rx - SITE.x, rz - SITE.z) < 14) return;
+    if (Math.abs(rx - SITE.x) < 8 && rz < SITE.z + 10 && rz > -80) return;
+
+    const ry = terrainY(rx, rz);
+    if (ry < 1.0 || ry > 95) return; // hindari dalam air & tebing es puncak tertinggi
+
+    // Tentukan tipe geometri
+    let t = typeHint;
+    if (t < 0) {
+      const p = rand();
+      t = (p < 0.38) ? 0 : (p < 0.72 ? 1 : 2);
+    }
+
+    let targetInst = null, targetIdx = 0;
+    if (t === 0 && nTall < MAX_TALL) {
+      targetInst = instTall; targetIdx = nTall++;
+    } else if (t === 1 && nBlock < MAX_BLOCK) {
+      targetInst = instBlock; targetIdx = nBlock++;
+    } else if (nWedge < MAX_WEDGE) {
+      targetInst = instWedge; targetIdx = nWedge++;
+    } else {
+      return;
+    }
+
+    const rotY = rand() * Math.PI * 2;
+    _q.setFromEuler(new THREE.Euler(tiltX, rotY, tiltZ));
+    _p.set(rx, ry - s * 0.16, rz);
+    _sv.set(s * (0.90 + rand() * 0.20), s * (0.92 + rand() * 0.18), s * (0.90 + rand() * 0.20));
+    _m.compose(_p, _q, _sv);
+
+    targetInst.setMatrixAt(targetIdx, _m);
+
+    // Pewarnaan faset batu harmonis bernuansa sejuk
+    const pal = ROCK_PALETTE[Math.floor(rand() * ROCK_PALETTE.length)];
+    const lum = 0.90 + rand() * 0.22;
+    _c.setRGB(pal[0] * lum, pal[1] * lum, pal[2] * lum);
+    targetInst.setColorAt(targetIdx, _c);
+
+    // Registrasi rintangan fisika / tabrakan (obstacle collision)
+    if (s > 0.85) {
+      obAdd({ x: rx, z: rz, r: s * 0.72 });
+    }
+  }
+
+  // 1. GENERASI GUGUS BEBATUAN (ROCK CLUSTERS) DI DAERAH TANDUS
+  let clusterTries = 0;
+  let clustersPlaced = 0;
+  while (clustersPlaced < 85 && clusterTries++ < 3000) {
+    const cx = (rand() * 2 - 1) * (T_HALF - 30);
+    const cz = (rand() * 2 - 1) * (T_HALF - 30);
+
+    // Cek kelayakan area tandus
+    const nMeadow = fbm(cx * 0.0038 + 14.2, cz * 0.0038 + 48.9, 3);
+    const isTandus = (nMeadow < 0.47);
+    if (!isTandus) continue;
+
+    if (Math.hypot(cx - 11.4, cz - 11.7) < 18) continue;
+    if (Math.hypot(cx - SITE.x, cz - SITE.z) < 16) continue;
+    if (Math.abs(cx - SITE.x) < 10 && cz < SITE.z + 12 && cz > -85) continue;
+
+    const cy = terrainY(cx, cz);
+    if (cy < 1.5 || cy > 88) continue;
+
+    // Profil gugus: 35% RAKSASA (Monumental Giants), 45% Menengah, 20% Outpost
+    const pProfile = rand();
+    let sCenter, companionCount;
+    if (pProfile < 0.35) {
+      // BATU RAKSASA (Monumental giant boulder / monolith: 5.5m - 9.8m!)
+      sCenter = 5.5 + rand() * 4.3;
+      companionCount = 4 + Math.floor(rand() * 4);
+    } else if (pProfile < 0.80) {
+      // BATU SEDANG (Medium rock cluster: 2.8m - 4.8m)
+      sCenter = 2.8 + rand() * 2.0;
+      companionCount = 3 + Math.floor(rand() * 3);
+    } else {
+      // BATU KECIL (Subtle rock group: 1.8m - 2.8m)
+      sCenter = 1.8 + rand() * 1.0;
+      companionCount = 2 + Math.floor(rand() * 2);
+    }
+
+    // Tempatkan batu sentral utama
+    const centerType = (rand() < 0.58) ? 0 : 1; // Monolith pilar atau block
+    addRock(cx, cz, sCenter, centerType);
+
+    // Tempatkan batu-batu pendamping di sekitarnya yang saling bersandar & menumpuk alami
+    for (let j = 0; j < companionCount; j++) {
+      const ang = (j / companionCount) * Math.PI * 2 + (rand() - 0.5) * 0.5;
+      const dist = sCenter * (0.32 + rand() * 0.42);
+      const rx = cx + Math.cos(ang) * dist;
+      const rz = cz + Math.sin(ang) * dist;
+      const sComp = sCenter * (0.22 + rand() * 0.36);
+      const tiltX = (rand() - 0.5) * 0.32;
+      const tiltZ = (rand() - 0.5) * 0.32;
+      const compType = (rand() < 0.35) ? 0 : (rand() < 0.70 ? 1 : 2);
+      addRock(rx, rz, sComp, compType, tiltX, tiltZ);
+    }
+
+    clustersPlaced++;
+  }
+
+  // 2. BEBATUAN SOLITER TERSEBAR DI WILAYAH TANDUS (SCATTERED BOULDERS)
+  let soloTries = 0;
+  while (soloTries++ < 600) {
+    const rx = (rand() * 2 - 1) * (T_HALF - 25);
+    const rz = (rand() * 2 - 1) * (T_HALF - 25);
+    const nMeadow = fbm(rx * 0.0038 + 14.2, rz * 0.0038 + 48.9, 3);
+    if (nMeadow >= 0.47) continue;
+
+    // Ukuran variatif: ada yang besar (5m-7.5m), sedang (2.5m-4.5m), kecil (1m-2.2m)
+    const pSize = rand();
+    let s;
+    if (pSize < 0.20) {
+      s = 5.0 + rand() * 2.8; // Batu soliter besar
+    } else if (pSize < 0.65) {
+      s = 2.4 + rand() * 2.2; // Sedang
+    } else {
+      s = 0.9 + rand() * 1.3; // Kecil
+    }
+
+    const tiltX = (rand() - 0.5) * 0.25;
+    const tiltZ = (rand() - 0.5) * 0.25;
+    addRock(rx, rz, s, -1, tiltX, tiltZ);
+  }
+
+  instTall.count = nTall;
+  instBlock.count = nBlock;
+  instWedge.count = nWedge;
+
+  instTall.instanceMatrix.needsUpdate = true;
+  instBlock.instanceMatrix.needsUpdate = true;
+  instWedge.instanceMatrix.needsUpdate = true;
+
+  if (instTall.instanceColor) instTall.instanceColor.needsUpdate = true;
+  if (instBlock.instanceColor) instBlock.instanceColor.needsUpdate = true;
+  if (instWedge.instanceColor) instWedge.instanceColor.needsUpdate = true;
+
+  scene.add(instTall);
+  scene.add(instBlock);
+  scene.add(instWedge);
 })();
 
 /* ------------------------------------------------------------------ *
@@ -6574,7 +6782,7 @@ const tod = {
   mode: 'auto',        // 'auto' | 'dawn' | 'day' | 'dusk' | 'night'
   time: 0.35,          // 0.0 .. 1.0 (0.25=pagi, 0.50=siang, 0.75=sore, 0.0=malam)
   targetTime: 0.35,
-  speed: 1 / 240       // 1 siklus hari penuh = 240 detik
+  speed: 1 / 960       // 1 siklus hari penuh = 960 detik (16 menit, ~4 menit per fase waktu: pagi, siang, sore, malam)
 };
 const TOD_TARGETS = { dawn: 0.25, day: 0.50, dusk: 0.75, night: 0.00 };
 
@@ -6907,7 +7115,7 @@ function update(dt) {
     }
     markTrees();
   }
-  fireFX.update(dt); dustFX.update(dt);
+  fireFX.update(dt); dustFX.update(dt); smokeFX.update(dt);
   if (typeof updateDragon === 'function') updateDragon(dt);
 
   // Animasi roket tercecer di map: rotasi & melayang (bobbing)
