@@ -631,9 +631,9 @@ function surfaceY(x, z) {
 // --- WARNA & GEOMETRI TERRAIN (GUNUNG TEGAS SHARP POLY) ---
 // Pembagian area: 60% padang rumput, 40% tanah tandus/gersang
 function getGroundColor(x, y, z, n1, n2) {
-  // Mask padang rumput vs tanah tandus (60% rumput, 40% tandus)
+  // Mask padang rumput vs tanah tandus (45% rumput, 55% tandus)
   const nMeadow = fbm(x * 0.0038 + 14.2, z * 0.0038 + 48.9, 3);
-  const grassMask = clamp((nMeadow - 0.40) / 0.10, 0, 1);
+  const grassMask = clamp((nMeadow - 0.47) / 0.08, 0, 1);
 
   // Tone rumput: campuran hijau mentah & hijau matang
   const toneVal = fbm(x * 0.009 + 33.1, z * 0.009 + 71.4, 2);
@@ -747,13 +747,12 @@ function getTerrainColor(x, y, z, ny) {
   scene.add(terrainMesh);
 })();
 
-// --- PADANG RUMPUT SUPER RIMBUN (GAPLESS LUSH MEADOWS) ---
-// Radius 105m (~158m di depan pemain). 7 helai lebar per rumpun (140.000 helai).
-// Dibatasi hanya tumbuh pada 60% padang rumput (40% sisanya tanah tandus).
-// Campuran hijau mentah segar & hijau matang rimbun di area tertentu.
-const GRASS_R = 105;                      // radius area rumput 105 meter (~158m jangkauan depan)
-const GRASS_MAX = 20000;                  // 20.000 rumpun rimbun padat (total ~140.000 helai rumput)
-const GRASS_BY_Q = [8000, 14000, 20000];  // jumlah rumpun per level kualitas (LOW/MED/HIGH)
+// --- PADANG RUMPUT SUPER RIMBUN DENGAN HELAI TIPIS RAMPING (3 LAPISAN TUSSOCK) ---
+// Radius 55m. 20 helai tipis (~3cm) per rumpun x 45.000 titik (jarak antar titik 51cm) = 900.000 helai tipis padat.
+// Saling tumpang tindih penuh tanpa celah kosong, helai tipis anggun dan tetap sangat rimbun.
+const GRASS_R = 55;                       // radius area rumput 55 meter (kepadatan tinggi di sekitar pemain)
+const GRASS_MAX = 45000;                  // 45.000 rumpun super padat (total 900.000 helai tipis)
+const GRASS_BY_Q = [20000, 32000, 45000]; // jumlah rumpun per level kualitas (LOW/MED/HIGH)
 
 const grassHeightTex = (function makeHeightTex() {
   let hMin = Infinity, hMax = -Infinity;
@@ -781,11 +780,11 @@ const grassHeightTex = (function makeHeightTex() {
       const slopeZ = (hU - hD) / (2 * T_D);
       const ny = 1.0 / Math.hypot(slopeX, 1.0, slopeZ);
 
-      // Kanal B: Mask padang rumput (60% rumput rimbun, 40% tandus)
+      // Kanal B: Mask padang rumput (45% rumput rimbun, 55% tandus)
       let grassByte = 0;
       if (ny >= 0.72 && y < 75) {
         const nMeadow = fbm(x * 0.0038 + 14.2, z * 0.0038 + 48.9, 3);
-        const grassF = clamp((nMeadow - 0.40) / 0.10, 0, 1);
+        const grassF = clamp((nMeadow - 0.47) / 0.08, 0, 1);
         grassByte = Math.round(grassF * 255);
       }
       data[i * 4 + 2] = grassByte;
@@ -810,22 +809,55 @@ const grassBladeGeo = (function makeGrassBladeGeo() {
   const g = new THREE.InstancedBufferGeometry();
   const rr = rng32(9191);
   const pos = [], tAttr = [], idx = [];
-  const BLADES_PER_CLUMP = 7; // 7 helai lebar per rumpun => ~140.000 helai super rimbun tanpa celah/space
+  const BLADES_PER_CLUMP = 20; // 20 strip tipis per rumpun dalam 3 lapisan (inti, tengah, luar)
   for (let b = 0; b < BLADES_PER_CLUMP; b++) {
-    const a = (b / BLADES_PER_CLUMP) * Math.PI * 2 + (rr() - 0.5) * 0.35;
+    let a, radDist, ox, oz, w, topW, h, lean;
+    const rndW = rr(), rndH = rr(), rndL = rr();
+    w = 0.024 + rndW * 0.014; // helai tipis ramping alami (~2.4 - 3.8 cm)
+    topW = w * 0.85;
+
+    if (b < 6) {
+      // Lapisan 1: Inti tengah tegak rapat (6 helai)
+      a = (b / 6) * Math.PI * 2 + (rr() - 0.5) * 0.35;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      radDist = 0.04 + rr() * 0.08;
+      ox = ca * radDist + (rr() - 0.5) * 0.05;
+      oz = sa * radDist + (rr() - 0.5) * 0.05;
+      h = 0.55 + rndH * 0.18;
+      lean = 0.14 + rndL * 0.08;
+    } else if (b < 13) {
+      // Lapisan 2: Lingkar tengah menyebar lembut (7 helai)
+      a = ((b - 6) / 7) * Math.PI * 2 + (rr() - 0.5) * 0.30;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      radDist = 0.16 + rr() * 0.12;
+      ox = ca * radDist + (rr() - 0.5) * 0.07;
+      oz = sa * radDist + (rr() - 0.5) * 0.07;
+      h = 0.48 + rndH * 0.16;
+      lean = 0.28 + rndL * 0.12;
+    } else {
+      // Lapisan 3: Lingkar luar melengkung menutup tanah (7 helai)
+      a = ((b - 13) / 7) * Math.PI * 2 + (rr() - 0.5) * 0.30;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      radDist = 0.28 + rr() * 0.15;
+      ox = ca * radDist + (rr() - 0.5) * 0.09;
+      oz = sa * radDist + (rr() - 0.5) * 0.09;
+      h = 0.42 + rndH * 0.14;
+      lean = 0.42 + rndL * 0.14;
+    }
+
     const ca = Math.cos(a), sa = Math.sin(a);
-    const ox = (rr() - 0.5) * 1.05, oz = (rr() - 0.5) * 1.05;
-    const w = 0.20 + rr() * 0.12;  // helai lebar rimbun tebal
-    const h = 1.05 + rr() * 0.55;  // tinggi rimbun
-    const lean = 0.30 + rr() * 0.22;
+    const lx = ca * lean * 0.32, lz = sa * lean * 0.32;
     const base = pos.length / 3;
+
+    // 4 titik sudut membentuk quad pita lurus tipis ramping (strip)
     pos.push(
-      ox - ca * w, 0, oz - sa * w,
-      ox + ca * w, 0, oz + sa * w,
-      ox + ca * lean * 0.5 + sa * 0.10, h, oz + sa * lean * 0.5 - ca * 0.10
+      ox - ca * w, 0, oz - sa * w,                 // v0: bawah kiri
+      ox + ca * w, 0, oz + sa * w,                 // v1: bawah kanan
+      ox + ca * topW + lx, h, oz + sa * topW + lz, // v2: atas kanan
+      ox - ca * topW + lx, h, oz - sa * topW + lz  // v3: atas kiri
     );
-    tAttr.push(0, 0, 1);
-    idx.push(base, base + 1, base + 2);
+    tAttr.push(0, 0, 1, 1);
+    idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('aT', new THREE.Float32BufferAttribute(tAttr, 1));
@@ -905,22 +937,22 @@ const grassMat = new THREE.ShaderMaterial({
       // Jarak relatif terhadap pusat lingkaran rumput
       float d = length(wp - uCenter) / uR;
 
-      // Helai di kejauhan dibuat lebih lebar & padat agar perbukitan jauh tidak tampak botak
-      float distScale = 1.0 + smoothstep(0.15, 0.85, d) * 0.85;
+      // Skala jarak dijaga tetap ramping tipis tanpa menggembung lebar
+      float distScale = 1.0 + smoothstep(0.2, 0.85, d) * 0.20;
 
-      // Fade halus di tepi terjauh (0.86..1.0), lereng tebing terjal, dan puncak salju
-      float fade = (1.0 - smoothstep(0.86, 1.0, d)) * smoothstep(0.72, 0.84, ny) * (1.0 - smoothstep(65.0, 85.0, gy));
+      // Fade halus di tepi terjauh (0.88..1.0), lereng tebing terjal, dan puncak salju
+      float fade = (1.0 - smoothstep(0.88, 1.0, d)) * smoothstep(0.70, 0.82, ny) * (1.0 - smoothstep(68.0, 85.0, gy));
 
-      // 60% rumput rimbun, 40% area tandus (rumput tidak tumbuh di tanah tandus)
-      float meadowFade = smoothstep(0.15, 0.65, gMask);
+      // 45% rumput rimbun: tampil penuh ukuran 100% tanpa helai kerdil menyusut
+      float meadowFade = smoothstep(0.02, 0.12, gMask);
       fade *= meadowFade;
 
       float a = aRand.x * 6.2831853;
       float ca = cos(a), sa = sin(a);
       vec3 p = position;
       p.xz = vec2(ca * p.x - sa * p.z, sa * p.x + ca * p.z) * distScale;
-      float hs = (0.85 + aRand.y * 0.45);
-      p.y *= hs * (1.0 + smoothstep(0.3, 0.9, d) * 0.35);
+      float hs = (0.85 + aRand.y * 0.35);
+      p.y *= hs * (1.0 + smoothstep(0.3, 0.9, d) * 0.15);
       p *= fade;
 
       // Rumput diam sepenuhnya tanpa efek gerakan / ayunan angin
@@ -970,7 +1002,8 @@ const _grassDir = new THREE.Vector3();
 function updateGrassField() {
   grassBladeGeo.instanceCount = GRASS_BY_Q[qIdx] || GRASS_MAX;
   const camGround = terrainY(camera.position.x, camera.position.z);
-  grassField.visible = (camera.position.y - camGround) < 140;   // terbang tinggi => rumput tak terlihat, hemat GPU
+  // Rumput tetap dirender penuh saat terbang tinggi (hingga ketinggian 700m)
+  grassField.visible = (camera.position.y - camGround) < 700;
   if (!grassField.visible) return;
   camera.getWorldDirection(_grassDir); _grassDir.y = 0;
   if (_grassDir.lengthSq() < 1e-4) _grassDir.set(0, 0, -1);
@@ -1077,9 +1110,9 @@ flowerInst.frustumCulled = false;
     if (y > 45) continue;
     groundNormal(x, z, _norm);
     if (_norm.y < 0.85) continue;
-    // Bunga hanya mekar di padang rumput hijau (bukan di tanah tandus)
+    // Bunga hanya mekar di padang rumput hijau (45% area rumput)
     const nMeadow = fbm(x * 0.0038 + 14.2, z * 0.0038 + 48.9, 3);
-    if (nMeadow < 0.42) continue;
+    if (nMeadow < 0.49) continue;
 
     const sc = 1.8 + randVeg() * 0.6;   // bunga menyembul di atas rumput rimbun
     _dummyPos.set(x, y - 0.03, z);
